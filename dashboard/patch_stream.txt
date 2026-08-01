@@ -1,0 +1,9 @@
+                  setConfirmAction({
+                    type: 'STREAM',
+                    callback: () => {
+                      if (onTriggerAction) onTriggerAction([node.id], 'STREAM', finalUri);
+                    }
+                  });
+                }
+              }
+              disabled={!controlsUnlocked || !!node.accessKeyRevoked || streamState !== 'idle'}

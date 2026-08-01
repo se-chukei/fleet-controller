@@ -1,0 +1,6 @@
+{
+  "name": "Streaming Redundancy & Fleet Management Bridge",
+  "description": "Fleet-grade command and control dashboard for monitoring, failover, and real-time visual troubleshooting of 100+ TV Streamer endpoints.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

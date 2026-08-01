@@ -1,0 +1,11 @@
+            <button
+              onClick={() => {
+                setConfirmAction({
+                  type: 'STANDBY',
+                  callback: () => {
+                    if (onTriggerAction) onTriggerAction([node.id], 'STANDBY');
+                  }
+                });
+              }}
+              disabled={!controlsUnlocked || !!node.accessKeyRevoked || standbyState !== 'idle'}
+              className={`w-full py-2 rounded text-[10px] font-mono font-bold border select-none transition-all duration-300 ${

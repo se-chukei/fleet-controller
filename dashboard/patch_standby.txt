@@ -1,0 +1,8 @@
+                setConfirmAction({
+                  type: 'STANDBY',
+                  callback: () => {
+                    if (onTriggerAction) onTriggerAction([node.id], 'STANDBY');
+                  }
+                });
+              }}
+              disabled={!controlsUnlocked || !!node.accessKeyRevoked || standbyState !== 'idle'}

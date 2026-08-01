@@ -1,0 +1,10 @@
+            <button
+              onClick={() => {
+                setConfirmAction({
+                  type: 'WATCHDOG',
+                  callback: () => {
+                    if (onTriggerAction) onTriggerAction([node.id], 'RESYNC');
+                  }
+                });
+              }}
+              disabled={!controlsUnlocked || !!node.accessKeyRevoked || resyncState !== 'idle'}
