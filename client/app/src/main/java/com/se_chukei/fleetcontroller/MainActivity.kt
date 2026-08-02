@@ -1,24 +1,11 @@
 package com.se_chukei.fleetcontroller
 
-import android.os.Bundle
-import android.os.PowerManager
-import androidx.appcompat.app.AppCompatActivity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import android.content.Intent
 import android.os.Bundle
 import android.os.PowerManager
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
-import com.se_chukei.fleetcontroller.State.*
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,16 +28,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var libVLC: LibVLC
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var vlcVideoLayout: VLCVideoLayout
+    private lateinit var featureRegistry: FeatureRegistry
 
     private var wakeLock: PowerManager.WakeLock? = null
 
     private val client = OkHttpClient()
     private val scope = CoroutineScope(Dispatchers.IO + Job())
 
-    // The Data Bridge endpoint on your Mac's Tailscale IP
-    private val dataBridgeUrl = "http://10.74.35.53:8080/api/state"
+    // Configurable Data Bridge URL with fallback to local development server
+    private val dataBridgeUrl = System.getProperty("fleet.databridge.url") ?: "http://localhost:8080/api/state"
     private var currentStreamUrl: String? = null
-    private var currentState: State = STANDBY
+    private var currentState: State = State.STANDBY
     private var fleetServiceIntent: Intent? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,6 +57,9 @@ class MainActivity : AppCompatActivity() {
         libVLC = LibVLC(this, args)
         mediaPlayer = MediaPlayer(libVLC)
         mediaPlayer.attachViews(vlcVideoLayout, null, true, false)
+
+        // Initialize State Engine & Feature Module Registry
+        featureRegistry = FeatureRegistry(this)
 
         // Start the FleetService
         fleetServiceIntent = Intent(this, FleetService::class.java)
@@ -92,38 +83,35 @@ class MainActivity : AppCompatActivity() {
                                 val accessKeyRevoked = json.optBoolean("accessKeyRevoked", false)
 
                                 val newState = when (appStateString) {
-                                    "STREAM" -> STREAM
-                                    "PLAYBACK" -> PLAYBACK
-                                    else -> STANDBY
+                                    "STREAM" -> State.STREAM
+                                    "PLAYBACK" -> State.PLAYBACK
+                                    else -> State.STANDBY
                                 }
 
                                 // Update state and URL if they have changed
                                 if (newState != currentState || newStreamUrl != currentStreamUrl) {
-                                    currentState = newState
-                                    currentStreamUrl = newStreamUrl
-
                                     // If access key is revoked, go to STANDBY and stop playback
                                     if (accessKeyRevoked) {
                                         Log.w("MainActivity", "Access key revoked. Entering STANDBY state.")
-                                        updateState(STANDBY, null)
+                                        updateState(State.STANDBY, null)
                                     } else {
-                                        updateState(currentState, currentStreamUrl)
+                                        updateState(newState, newStreamUrl)
                                     }
                                 }
                             }
                         } else {
                             Log.e("MainActivity", "Failed to poll Data Bridge: ${response.code}")
                             // If Data Bridge is unreachable, default to STANDBY
-                            if (currentState != STANDBY) {
-                                updateState(STANDBY, null)
+                            if (currentState != State.STANDBY) {
+                                updateState(State.STANDBY, null)
                             }
                         }
                     }
                 } catch (e: IOException) {
                     Log.e("MainActivity", "IOException polling Data Bridge: ${e.message}")
                     // Data bridge might be offline, will silently retry
-                    if (currentState != STANDBY) {
-                        updateState(STANDBY, null)
+                    if (currentState != State.STANDBY) {
+                        updateState(State.STANDBY, null)
                     }
                 }
 
@@ -139,34 +127,10 @@ class MainActivity : AppCompatActivity() {
         currentState = newState
         currentStreamUrl = url
 
-        when (currentState) {
-            STANDBY -> {
-                mediaPlayer.stop()
-                // Optionally, display a standby screen or graphic
-                // For now, just stop playback
-                vlcVideoLayout.visibility = android.view.View.GONE // Hide video view in standby
-            }
-            STREAM -> {
-                if (url != null) {
-                    playStream(url)
-                    vlcVideoLayout.visibility = android.view.View.VISIBLE // Show video view
-                } else {
-                    Log.e("MainActivity", "STREAM state requires a URL.")
-                    // Fallback to STANDBY if URL is missing
-                    updateState(STANDBY, null)
-                }
-            }
-            PLAYBACK -> {
-                if (url != null) {
-                    playStream(url)
-                    vlcVideoLayout.visibility = android.view.View.VISIBLE // Show video view
-                } else {
-                    Log.e("MainActivity", "PLAYBACK state requires a URL.")
-                    // Fallback to STANDBY if URL is missing
-                    updateState(STANDBY, null)
-                }
-            }
+        val bundle = Bundle().apply {
+            putString("streamUrl", url)
         }
+        featureRegistry.transitionTo(newState, bundle)
 
         // Send state update to FleetService
         fleetServiceIntent?.let {
@@ -176,12 +140,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun playStream(url: String) {
+    fun playStream(url: String) {
         Log.d("MainActivity", "Playing stream: $url")
         val media = Media(libVLC, url.toUri())
         mediaPlayer.media = media
         media.release()
         mediaPlayer.play()
+        vlcVideoLayout.visibility = android.view.View.VISIBLE
+    }
+
+    fun stopStream() {
+        Log.d("MainActivity", "Stopping active stream playback")
+        mediaPlayer.stop()
+        vlcVideoLayout.visibility = android.view.View.GONE
     }
 
     override fun onResume() {
@@ -211,5 +182,3 @@ class MainActivity : AppCompatActivity() {
         fleetServiceIntent?.let { stopService(it) }
     }
 }
-
-
