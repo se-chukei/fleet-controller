@@ -39,7 +39,7 @@ fleet-controller/
 │   Fleet orchestration backend
 │
 └── client/
-    
+
     Android TV endpoint application
 ```
 
