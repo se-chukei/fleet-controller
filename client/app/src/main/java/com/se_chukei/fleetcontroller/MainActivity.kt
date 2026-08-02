@@ -36,7 +36,7 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.IO + Job())
 
     // Configurable Data Bridge URL with fallback to local development server
-    private val dataBridgeUrl = System.getProperty("fleet.databridge.url") ?: "http://localhost:8080/api/state"
+    private val dataBridgeUrl = System.getProperty("fleet.databridge.url") ?: "http://100.74.35.53:8080/api/state"
     private var currentStreamUrl: String? = null
     private var currentState: State = State.STANDBY
     private var fleetServiceIntent: Intent? = null
