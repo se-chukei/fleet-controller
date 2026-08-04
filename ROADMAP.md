@@ -487,46 +487,6 @@ Then:
 
 ---
 
-# Current Milestone
-
-## Milestone 1 — End-to-End Architecture Validation
-
-Objective
-
-Demonstrate a complete working FleetController workflow:
-
-Dashboard
-↓
-Data Bridge
-↓
-Telebeat
-↓
-Android Client
-↓
-State Engine
-↓
-VLC
-
-Success Criteria
-
-- Dashboard runs locally.
-- Data Bridge runs locally.
-- Android APK installs.
-- Client telebeats successfully.
-- Dashboard can simulate a live event.
-- Client transitions between STANDBY and STREAM.
-- VLC plays the requested RTMP stream.
-
-Out of Scope
-
-- TVU Search integration
-- USB playback
-- OTA updates
-- Troubleshooting
-- Health monitoring
-
----
-
 # Future Enhancements
 
 Potential future modules:

@@ -173,49 +173,7 @@ Avoid:
 - Mixing playback, networking, and UI logic.
 
 ---
-# 7.5 Implementation Order
 
-AI agents should preserve architectural layering, even during early development.
-
-The preferred implementation order is:
-
-Data Bridge
-        ↓
-Telebeat Communication
-        ↓
-Android Client Telebeat Service
-        ↓
-State Engine
-        ↓
-Feature Registry
-        ↓
-Feature Module
-        ↓
-VLC Playback
-
-Avoid bypassing intermediate layers simply because functionality is not yet complete.
-
-Example:
-
-Incorrect:
-
-Telebeat Response
-        ↓
-Directly call VLC
-
-Correct:
-
-Telebeat Response
-        ↓
-State Engine
-        ↓
-Feature Registry
-        ↓
-VlcNetworkStreamModule
-        ↓
-VLC
-
----
 # 8. VLC Rules
 
 VLC for Android is the approved playback engine.
@@ -444,25 +402,6 @@ Avoid:
 
 ---
 
-# 16.5 Prototype Development
-
-Early implementations should prioritize preserving architecture over implementing every feature.
-
-It is acceptable for modules to contain minimal implementations or placeholders, provided the intended architecture is maintained.
-
-Preferred:
-
-- Minimal State Engine
-- Minimal Feature Registry
-- Stub Feature Modules
-- Basic Telebeat communication
-
-Avoid implementing shortcuts that bypass architectural layers and will require significant refactoring later.
-
-When a feature is not yet implemented, prefer creating a clearly documented placeholder rather than embedding temporary logic into unrelated components.
-
----
-
 # 17. Before Making Changes
 
 AI agents should:
@@ -488,27 +427,6 @@ Instead:
 
 ---
 
-# 18.5 Documentation Priority
-
-When documentation appears to conflict, AI agents should use the following precedence:
-
-1. TECHNICAL_SPEC.md
-2. SYSTEM_DESIGN.md
-3. ARCHITECTURE.md
-4. DECISIONS.md
-5. README.md
-
-If implementation conflicts with the documented architecture:
-
-- Identify the discrepancy.
-- Do not assume the implementation is correct.
-- Recommend whether the implementation or documentation should be updated.
-- Avoid silently changing architecture to match existing code.
-
-Documentation defines the intended design unless explicitly superseded by an approved architectural decision.
-
----
-
 # 19. Long-Term Goal
 
 The purpose of AI assistance is to accelerate development while preserving:
@@ -519,8 +437,4 @@ The purpose of AI assistance is to accelerate development while preserving:
 - User experience.
 - Architectural integrity.
 
-AI should act as a senior engineering assistant, preserving the documented architecture while implementing the smallest complete increment toward a working system.
-
-The preferred development strategy is to deliver thin, end-to-end vertical slices that exercise the complete architecture, rather than implementing isolated subsystems in depth.
-
-A working but minimal implementation that respects architectural boundaries is preferred over a more feature-complete implementation that bypasses them.
+AI should act as a senior engineering assistant, not an uncontrolled code generator.
