@@ -1,0 +1,65 @@
+name: Daily Project Health & Security Audit
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Runs daily at 2:00 AM UTC
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      issues: write # Required for automatically opening an issue via GitHub CLI
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Security Vulnerability Audit
+        id: audit
+        run: npm audit --audit-level=high
+
+      - name: Run TypeScript Type Checks
+        id: tsc
+        run: npx tsc --noEmit
+
+      - name: Run Production Build Verification
+        id: build
+        run: npm run build
+
+      - name: Report Failure via GitHub CLI
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          FAILED_STEPS=""
+          
+          if [ "${{ steps.audit.outcome }}" == "failure" ]; then
+            FAILED_STEPS="$FAILED_STEPS - Security Vulnerability Audit (`npm audit`)\n"
+          fi
+          if [ "${{ steps.tsc.outcome }}" == "failure" ]; then
+            FAILED_STEPS="$FAILED_STEPS - TypeScript Type Checks (`npx tsc --noEmit`)\n"
+          fi
+          if [ "${{ steps.build.outcome }}" == "failure" ]; then
+            FAILED_STEPS="$FAILED_STEPS - Production Build (`npm run build`)\n"
+          fi
+
+          ISSUE_BODY="The automated daily health check and security audit failed on branch \`${{ github.ref_name }}\`.\n\n### Failed Components:\n$FAILED_STEPS\n\n[View Workflow Run details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+          gh issue create \
+            --title "🚨 Automated Health Check / Build Failure" \
+            --body "$(echo -e "$ISSUE_BODY")" \
+            --label "maintenance-alert,automated-bug" \
+            --assignee "@google-labs-jules"

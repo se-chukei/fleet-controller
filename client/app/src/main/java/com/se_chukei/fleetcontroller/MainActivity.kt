@@ -36,7 +36,7 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.IO + Job())
 
     // Configurable Data Bridge URL with fallback to local development server
-    private val dataBridgeUrl = System.getProperty("fleet.databridge.url") ?: "http://100.74.35.53:8080/api/state"
+    private val dataBridgeUrl = System.getProperty("fleet.databridge.url") ?: "http://100.74.35.53:3000/api/state"
     private var currentStreamUrl: String? = null
     private var currentState: State = State.STANDBY
     private var fleetServiceIntent: Intent? = null
@@ -123,30 +123,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateState(newState: State, url: String?) {
-        Log.d("MainActivity", "Updating state to: $newState, URL: $url")
-        currentState = newState
-        currentStreamUrl = url
+        // Run state transitions and UI operations on the main thread
+        runOnUiThread {
+            Log.d("MainActivity", "Updating state to: $newState, URL: $url")
+            currentState = newState
+            currentStreamUrl = url
 
-        val bundle = Bundle().apply {
-            putString("streamUrl", url)
-        }
-        featureRegistry.transitionTo(newState, bundle)
+            val bundle = Bundle().apply {
+                putString("streamUrl", url)
+            }
+            featureRegistry.transitionTo(newState, bundle)
 
-        // Send state update to FleetService
-        fleetServiceIntent?.let {
-            it.putExtra("STATE", currentState.name)
-            it.putExtra("STREAM_URL", url)
-            startService(it)
+            // Send state update to FleetService
+            fleetServiceIntent?.let {
+                it.putExtra("STATE", currentState.name)
+                it.putExtra("STREAM_URL", url)
+                startService(it)
+            }
         }
     }
 
     fun playStream(url: String) {
         Log.d("MainActivity", "Playing stream: $url")
-        val media = Media(libVLC, url.toUri())
-        mediaPlayer.media = media
-        media.release()
-        mediaPlayer.play()
+        
+        // Ensure the video layout view is visible and prioritized first
         vlcVideoLayout.visibility = android.view.View.VISIBLE
+        vlcVideoLayout.bringToFront()
+        vlcVideoLayout.requestLayout()
+
+        vlcVideoLayout.post {
+            try {
+                mediaPlayer.stop()
+                val media = Media(libVLC, url.toUri()).apply {
+                    setHWDecoderEnabled(true, false)
+                    addOption(":network-caching=1500")
+                }
+                mediaPlayer.media = media
+                media.release()
+                mediaPlayer.play()
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to start media playback: ${e.message}")
+            }
+        }
     }
 
     fun stopStream() {
