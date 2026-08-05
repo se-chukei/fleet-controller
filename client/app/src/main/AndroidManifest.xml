@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Required for foreground services on Android 10+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required for dataSync foreground service type on Android 14+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Required for auto-starting the app on boot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -29,7 +31,8 @@
         <service
             android:name=".FleetService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <receiver
             android:name=".BootReceiver"
