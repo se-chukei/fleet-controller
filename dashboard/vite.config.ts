@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
+import fs from 'fs';
 
 export default defineConfig(() => {
   return {
@@ -9,16 +10,35 @@ export default defineConfig(() => {
       react(), 
       tailwindcss(),
       {
-        name: 'api-state-server',
+        name: 'fleet-status-bridge',
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
             if (req.url?.startsWith('/api/state')) {
-              console.log(`[DataBridge] Received poll from TV app at ${new Date().toLocaleTimeString()}`);
+              const statusFilePath = path.resolve(__dirname, 'fleetstatus.json');
+
+              try {
+                if (fs.existsSync(statusFilePath)) {
+                  const fileContent = fs.readFileSync(statusFilePath, 'utf-8');
+                  JSON.parse(fileContent); // Validate JSON
+
+                  console.log(`[DataBridge] Serving fleetstatus.json to TV app at ${new Date().toLocaleTimeString()}`);
+                  res.setHeader('Content-Type', 'application/json');
+                  res.statusCode = 200;
+                  res.end(fileContent);
+                  return;
+                } else {
+                  console.warn('[DataBridge] fleetstatus.json not found in project root!');
+                }
+              } catch (e: any) {
+                console.error(`[DataBridge] Error reading/parsing fleetstatus.json: ${e.message}`);
+              }
+
+              // Fallback response if file is missing or malformed
               res.setHeader('Content-Type', 'application/json');
               res.statusCode = 200;
               res.end(JSON.stringify({
-                appState: "STREAM",
-                streamUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+                appState: "STANDBY",
+                streamUrl: "",
                 accessKeyRevoked: false
               }));
               return;
