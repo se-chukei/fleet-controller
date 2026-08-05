@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.PowerManager
 import android.util.Log
+import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import kotlinx.coroutines.*
@@ -44,6 +45,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Prevent the TV from going to sleep due to inactivity during streaming
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         vlcVideoLayout = findViewById(R.id.vlc_video_layout)
 
