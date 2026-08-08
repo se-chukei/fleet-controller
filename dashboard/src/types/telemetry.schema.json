@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DeviceTelemetry",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "tailscaleIp": { "type": "string" },
+    "status": { "type": "string", "enum": ["ONLINE", "OFFLINE", "WARNING"] },
+    "appState": { "type": "string", "enum": ["STANDBY", "STREAM", "PLAYBACK"] },
+    "streamUri": { "type": "string" },
+    "vlcBitrateMbps": { "type": "number" },
+    "vlcActivePlayer": { "type": "string" },
+    "vlcPlayerType": { "type": "string" },
+    "powerState": { "type": "string" },
+    "deviceTempC": { "type": "number" },
+    "cpuUsagePercent": { "type": "number" },
+    "usbAttached": { "type": "boolean" },
+    "versionCode": { "type": "integer" },
+    "uptimeMs": { "type": "integer" },
+    "connectionType": { "type": "string", "enum": ["ETHERNET", "WIFI"] },
+    "wifiSignalStrengthDbm": { "type": ["number", "null"] },
+    "lastError": { "type": ["string", "null"] },
+    "lastSeenMs": { "type": "integer" },
+    "troubleshootActive": { "type": "boolean" },
+    "watchdogStep": { "type": "integer" },
+    "logs": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "tailscaleIp",
+    "status",
+    "appState",
+    "streamUri",
+    "versionCode",
+    "uptimeMs",
+    "lastSeenMs"
+  ]
+}
