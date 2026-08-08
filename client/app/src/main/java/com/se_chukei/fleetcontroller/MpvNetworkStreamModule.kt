@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import android.util.Log
 
-class VlcNetworkStreamModule(override val targetState: State) : BaseFeatureModule {
+class MpvNetworkStreamModule(override val targetState: State) : BaseFeatureModule {
 
     private var currentUrl: String? = null
     private var activeContext: Context? = null
@@ -12,7 +12,7 @@ class VlcNetworkStreamModule(override val targetState: State) : BaseFeatureModul
     override fun onStateEnter(context: Context, arguments: Bundle?) {
         activeContext = context
         val url = arguments?.getString("streamUrl")
-        Log.d("VlcNetworkStreamModule", "onStateEnter with state $targetState and URL: $url")
+        Log.d("MpvNetworkStreamModule", "onStateEnter with state $targetState and URL: $url")
         currentUrl = url
         if (context is MainActivity) {
             if (url != null && url.isNotEmpty()) {
@@ -25,7 +25,7 @@ class VlcNetworkStreamModule(override val targetState: State) : BaseFeatureModul
 
     override fun onConfigurationUpdate(arguments: Bundle?) {
         val url = arguments?.getString("streamUrl")
-        Log.d("VlcNetworkStreamModule", "onConfigurationUpdate with state $targetState and URL: $url")
+        Log.d("MpvNetworkStreamModule", "onConfigurationUpdate with state $targetState and URL: $url")
         if (url != currentUrl) {
             currentUrl = url
             val context = activeContext
@@ -36,7 +36,7 @@ class VlcNetworkStreamModule(override val targetState: State) : BaseFeatureModul
     }
 
     override fun onStateExit(context: Context) {
-        Log.d("VlcNetworkStreamModule", "onStateExit with state $targetState")
+        Log.d("MpvNetworkStreamModule", "onStateExit with state $targetState")
         if (context is MainActivity) {
             context.stopStream()
         }

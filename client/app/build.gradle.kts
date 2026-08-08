@@ -50,6 +50,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.appcompat)
-    implementation(libs.videolan.libvlc)
     implementation(libs.okhttp)
 }
