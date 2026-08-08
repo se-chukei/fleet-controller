@@ -41,12 +41,12 @@ export function generateInitialFleet(): FleetEndpoint[] {
     // Set up some varied initial states
     let status: 'ONLINE' | 'OFFLINE' | 'WARNING' = 'ONLINE';
     let appState: OperationalState = 'STREAM';
-    let vlcActivePlayer: 'PLAYER_A' | 'PLAYER_B' = 'PLAYER_A';
-    let vlcPlayerType: 'SurfaceView' | 'TextureView' = 'SurfaceView';
+    let activePlayerInstance: 'PLAYER_A' | 'PLAYER_B' = 'PLAYER_A';
+    let playerSurfaceType: 'SurfaceView' | 'TextureView' = 'SurfaceView';
     let usbAttached = false;
     let cpuUsagePercent = Math.floor(Math.random() * 15) + 5; // Clean 5-20% default hardware overlay
     let deviceTempC = Math.floor(Math.random() * 8) + 42; // Cool running at 42-50C
-    let vlcBitrateMbps = 4.2 + (Math.random() * 1.5); // Average 4-5.5 Mbps 1080p RTMP
+    let mediaBitrateMbps = 4.2 + (Math.random() * 1.5); // Average 4-5.5 Mbps 1080p RTMP
     
     // Make a few nodes have unique states
     if (i === 12) {
@@ -57,11 +57,11 @@ export function generateInitialFleet(): FleetEndpoint[] {
       // Node has USB media playing as priority local override
       appState = 'PLAYBACK';
       usbAttached = true;
-      vlcBitrateMbps = 12.5; // high-quality local MP4
+      mediaBitrateMbps = 12.5; // high-quality local MP4
     } else if (i === 45) {
       // Standby ambient stream
       appState = 'STANDBY';
-      vlcBitrateMbps = 2.8;
+      mediaBitrateMbps = 2.8;
     } else if (i === 78) {
       usbAttached = true; // Attached but still streaming from network (USB not active unless state changes)
     }
@@ -75,12 +75,12 @@ export function generateInitialFleet(): FleetEndpoint[] {
       tailscaleIp: generateTailscaleIp(i),
       status,
       appState,
-      vlcBitrateMbps: parseFloat(vlcBitrateMbps.toFixed(2)),
+      mediaBitrateMbps: parseFloat(mediaBitrateMbps.toFixed(2)),
       powerState: i % 15 === 0 ? 'USB_POW' : 'AC',
       deviceTempC,
       cpuUsagePercent,
-      vlcActivePlayer,
-      vlcPlayerType,
+      activePlayerInstance,
+      playerSurfaceType,
       troubleshootActive: false,
       versionCode: 104, // Default to newest approved APK
       lastSeenMs: Date.now() - Math.floor(Math.random() * 2000),
@@ -102,7 +102,7 @@ export function generateInitialFleet(): FleetEndpoint[] {
         `[${new Date().toLocaleTimeString()}] Data Bridge Heartbeat POST payload: { deviceId: "${id}", ipAddress: "${generateTailscaleIp(i)}" }`,
         `[${new Date().toLocaleTimeString()}] Server-side metadata fetched. Cached alias mapping in SharedPreferences: name="${name}"`,
         `[${new Date().toLocaleTimeString()}] Tailscale mesh tunnel verified: OK`,
-        `[${new Date().toLocaleTimeString()}] VLC for Android bound to SurfaceView overlay (hardware mode).`,
+        `[${new Date().toLocaleTimeString()}] MPV media player bound to SurfaceView overlay (hardware mode).`,
         `[${new Date().toLocaleTimeString()}] Telebeat high-frequency loop listening at interval 2s + Jitter.`
       ]
     });
@@ -139,7 +139,7 @@ export const INITIAL_OTA_RELEASES = [
 ];
 
 export const MOCK_GENERIC_LOGS = [
-  'VLC_PLAYER_PLAYING: Buffer filled. Surface compositing locked.',
+  'MPV_PLAYER_PLAYING: Buffer filled. Surface compositing locked.',
   'rtmp_reader: Frame index verified. PTS synchronized.',
   'accessibility_svc: Screen node scan complete. No consent prompt detected.',
   'telebeat: Outbound HTTP POST success (status 200 OK). No configuration changes received.',
@@ -149,7 +149,7 @@ export const MOCK_GENERIC_LOGS = [
 ];
 
 export const MOCK_ERROR_LOGS = [
-  'VLC_PLAYER_ERROR: RTMP socket reset by peer. Commencing local failover check.',
+  'MPV_PLAYER_ERROR: RTMP socket reset by peer. Commencing local failover check.',
   'network_monitor: Packet drop rate exceeded 4.5%. Buffer starvation warning.',
   'device_vitals: Temperature warning threshold crossed. Fanless thermal throttling warning.',
   'usb_manager: Voltage spike detected. Connection unstable.'

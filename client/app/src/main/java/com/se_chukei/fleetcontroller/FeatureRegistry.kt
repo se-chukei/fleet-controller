@@ -10,10 +10,10 @@ class FeatureRegistry(private val context: Context) {
     private var activeState: State? = null
 
     init {
-        // Register modules as defined in TECHNICAL_SPEC.md & SYSTEM_DESIGN.md
-        registerModule(State.STANDBY, VlcNetworkStreamModule(State.STANDBY))
-        registerModule(State.STREAM, VlcNetworkStreamModule(State.STREAM))
-        registerModule(State.PLAYBACK, VlcNetworkStreamModule(State.PLAYBACK))
+        // Register optimized mpv-based modules
+        registerModule(State.STANDBY, MpvNetworkStreamModule(State.STANDBY))
+        registerModule(State.STREAM, MpvNetworkStreamModule(State.STREAM))
+        registerModule(State.PLAYBACK, MpvUsbPlaybackModule())
     }
 
     fun registerModule(state: State, module: BaseFeatureModule) {

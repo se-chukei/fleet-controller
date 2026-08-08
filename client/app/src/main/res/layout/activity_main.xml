@@ -5,8 +5,8 @@
     android:background="#000000"
     android:keepScreenOn="true">
 
-    <org.videolan.libvlc.util.VLCVideoLayout
-        android:id="@+id/vlc_video_layout"
+    <com.se_chukei.fleetcontroller.MPVView
+        android:id="@+id/mpv_video_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 

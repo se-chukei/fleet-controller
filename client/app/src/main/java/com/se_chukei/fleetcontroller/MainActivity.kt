@@ -6,15 +6,12 @@ import android.os.PowerManager
 import android.util.Log
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.net.toUri
+import `is`.xyz.mpv.MPVLib
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import org.videolan.libvlc.LibVLC
-import org.videolan.libvlc.Media
-import org.videolan.libvlc.MediaPlayer
-import org.videolan.libvlc.util.VLCVideoLayout
+import java.io.File
 import java.io.IOException
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
@@ -26,10 +23,9 @@ enum class State {
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var libVLC: LibVLC
-    private lateinit var mediaPlayer: MediaPlayer
-    private lateinit var vlcVideoLayout: VLCVideoLayout
+    private lateinit var mpvVideoView: MPVView
     private lateinit var featureRegistry: FeatureRegistry
+    private lateinit var usbMediaScraper: UsbMediaScraper
 
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -42,6 +38,10 @@ class MainActivity : AppCompatActivity() {
     private var currentState: State = State.STANDBY
     private var fleetServiceIntent: Intent? = null
 
+    // MPV playlist management state
+    private var playlist: List<File> = emptyList()
+    private var currentPlaylistIndex: Int = -1
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -49,21 +49,31 @@ class MainActivity : AppCompatActivity() {
         // Prevent the TV from going to sleep due to inactivity during streaming
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        vlcVideoLayout = findViewById(R.id.vlc_video_layout)
+        mpvVideoView = findViewById(R.id.mpv_video_view)
 
-        // Initialize LibVLC
-        val args = ArrayList<String>().apply {
-            add("-vvv") // Verbose logs
-            add("--live-caching=1500") // 1.5 seconds network buffer
-            add("--clock-jitter=0")
-            add("--clock-synchro=0")
-        }
-        libVLC = LibVLC(this, args)
-        mediaPlayer = MediaPlayer(libVLC)
-        mediaPlayer.attachViews(vlcVideoLayout, null, true, false)
+        // Initialize MPVLib instance
+        MPVLib.safeCreate(applicationContext, "info")
+        MPVLib.safeSetOptionString("hwdec", "mediacodec") // Hardware accelerated decoding
+        MPVLib.safeSetOptionString("vo", "gpu") // GPU-accelerated video rendering
+        MPVLib.safeSetOptionString("cache", "yes")
+        MPVLib.safeSetOptionString("demuxer-max-bytes", "150000000") // 150MB maximum demuxer memory
+        MPVLib.safeInit()
 
         // Initialize State Engine & Feature Module Registry
         featureRegistry = FeatureRegistry(this)
+
+        // Initialize USB Auto-Scraper
+        usbMediaScraper = UsbMediaScraper(this) { updatedPlaylist ->
+            runOnUiThread {
+                Log.i("MainActivity", "USB playlist updated with size: ${updatedPlaylist.size}")
+                playlist = updatedPlaylist
+                if (currentState == State.PLAYBACK) {
+                    if (playlist.isNotEmpty() && currentPlaylistIndex == -1) {
+                        playPlaylistItem(0)
+                    }
+                }
+            }
+        }
 
         // Start the FleetService
         fleetServiceIntent = Intent(this, FleetService::class.java)
@@ -148,23 +158,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun playStream(url: String) {
-        Log.d("MainActivity", "Playing stream: $url")
+        Log.d("MainActivity", "Playing stream via MPV: $url")
         
         // Ensure the video layout view is visible and prioritized first
-        vlcVideoLayout.visibility = android.view.View.VISIBLE
-        vlcVideoLayout.bringToFront()
-        vlcVideoLayout.requestLayout()
+        mpvVideoView.visibility = android.view.View.VISIBLE
+        mpvVideoView.bringToFront()
+        mpvVideoView.requestLayout()
 
-        vlcVideoLayout.post {
+        mpvVideoView.post {
             try {
-                mediaPlayer.stop()
-                val media = Media(libVLC, url.toUri()).apply {
-                    setHWDecoderEnabled(true, false)
-                    addOption(":network-caching=1500")
-                }
-                mediaPlayer.media = media
-                media.release()
-                mediaPlayer.play()
+                // Command to load stream url in MPV
+                MPVLib.safeCommand(arrayOf("loadfile", url, "replace"))
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to start media playback: ${e.message}")
             }
@@ -173,8 +177,74 @@ class MainActivity : AppCompatActivity() {
 
     fun stopStream() {
         Log.d("MainActivity", "Stopping active stream playback")
-        mediaPlayer.stop()
-        vlcVideoLayout.visibility = android.view.View.GONE
+        MPVLib.safeCommand(arrayOf("stop"))
+        mpvVideoView.visibility = android.view.View.GONE
+    }
+
+    // --- Local USB Playback Controls Driven by libmpv commands ---
+
+    fun startUsbPlayback() {
+        Log.i("MainActivity", "Starting USB Playlist playback")
+        mpvVideoView.visibility = android.view.View.VISIBLE
+        mpvVideoView.bringToFront()
+        mpvVideoView.requestLayout()
+
+        // Scan/rescrape USB files
+        usbMediaScraper.startScraping()
+
+        if (playlist.isNotEmpty()) {
+            playPlaylistItem(0)
+        } else {
+            Log.w("MainActivity", "USB playlist is empty. Waiting for insertions.")
+        }
+    }
+
+    fun stopUsbPlayback() {
+        Log.i("MainActivity", "Stopping USB Playlist playback")
+        MPVLib.safeCommand(arrayOf("stop"))
+        mpvVideoView.visibility = android.view.View.GONE
+        currentPlaylistIndex = -1
+    }
+
+    fun playPlaylistItem(index: Int) {
+        if (playlist.isEmpty()) return
+        val validatedIndex = index.coerceIn(0, playlist.size - 1)
+        currentPlaylistIndex = validatedIndex
+        val targetFile = playlist[validatedIndex]
+        Log.i("MainActivity", "Playing USB Playlist Item [$validatedIndex]: ${targetFile.absolutePath}")
+        MPVLib.safeCommand(arrayOf("loadfile", targetFile.absolutePath, "replace"))
+    }
+
+    fun pausePlayback() {
+        Log.i("MainActivity", "Pausing mpv playback")
+        MPVLib.safeSetPropertyString("pause", "yes")
+    }
+
+    fun resumePlayback() {
+        Log.i("MainActivity", "Resuming mpv playback")
+        MPVLib.safeSetPropertyString("pause", "no")
+    }
+
+    fun nextPlaylistItem() {
+        if (playlist.isEmpty()) return
+        Log.i("MainActivity", "Navigating to next playlist item")
+        val nextIndex = (currentPlaylistIndex + 1) % playlist.size
+        playPlaylistItem(nextIndex)
+    }
+
+    fun previousPlaylistItem() {
+        if (playlist.isEmpty()) return
+        Log.i("MainActivity", "Navigating to previous playlist item")
+        var prevIndex = currentPlaylistIndex - 1
+        if (prevIndex < 0) {
+            prevIndex = playlist.size - 1
+        }
+        playPlaylistItem(prevIndex)
+    }
+
+    fun selectTrack(trackId: Int) {
+        Log.i("MainActivity", "Selecting track: $trackId")
+        MPVLib.safeSetPropertyString("sid", trackId.toString()) // subtitle track selection
     }
 
     override fun onResume() {
@@ -198,8 +268,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
-        mediaPlayer.release()
-        libVLC.release()
+        usbMediaScraper.stopScraping()
+        MPVLib.safeDestroy()
         // Stop the FleetService when MainActivity is destroyed
         fleetServiceIntent?.let { stopService(it) }
     }

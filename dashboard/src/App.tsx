@@ -164,7 +164,7 @@ export default function App() {
                 usbAttached: false,
                 usbDebounceCountdown: null,
                 appState: targetState,
-                vlcBitrateMbps: primaryFeedOnline ? 4.5 : 2.8,
+                mediaBitrateMbps: primaryFeedOnline ? 4.5 : 2.8,
                 streamUri: targetUri,
                 logs: [
                   ...node.logs,
@@ -199,8 +199,8 @@ export default function App() {
                   deviceTempC: 72,
                   logs: [
                     ...node.logs,
-                    `[${new Date().toLocaleTimeString()}] CRITICAL: Native C++ player crash: SIGSEGV (signal 11) in libvlc.so decoder pipeline.`,
-                    `[${new Date().toLocaleTimeString()}] CRITICAL: VLC player thread stalled. Screen rendering frozen.`
+                    `[${new Date().toLocaleTimeString()}] CRITICAL: Native C++ player crash: SIGSEGV (signal 11) in libmpv.so decoder pipeline.`,
+                    `[${new Date().toLocaleTimeString()}] CRITICAL: MPV player thread stalled. Screen rendering frozen.`
                   ]
                 };
               }
@@ -230,7 +230,7 @@ export default function App() {
           ) {
             const isStream = globalFleetState === 'STREAM';
             updatedNode.appState = globalFleetState;
-            updatedNode.vlcBitrateMbps = isStream ? 4.5 : 2.8;
+            updatedNode.mediaBitrateMbps = isStream ? 4.5 : 2.8;
             updatedNode.streamUri = isStream ? node.targetStreamUri : 'rtmp://10.200.4.1/live/ambient_multicam';
             updatedNode.logs = [
               ...node.logs,
@@ -269,7 +269,7 @@ export default function App() {
             if (step) {
               const newLogs = [...node.logs];
               if (step === 1) {
-                newLogs.push(`[${new Date().toLocaleTimeString()}] [Watchdog] WARNING: VLC player thread stall detected. Native surface rendering is frozen.`);
+                newLogs.push(`[${new Date().toLocaleTimeString()}] [Watchdog] WARNING: MPV player thread stall detected. Native surface rendering is frozen.`);
                 newLogs.push(`[${new Date().toLocaleTimeString()}] [Watchdog] ACTION: Initiating local application service restart (Attempt 1/2)...`);
                 return {
                   ...node,
@@ -298,7 +298,7 @@ export default function App() {
             const newLogs = [...node.logs];
             newLogs.push(`[${new Date().toLocaleTimeString()}] [Boot] Android OS Booting (com.se_chukei.fleetcontroller Init Phase)...`);
             newLogs.push(`[${new Date().toLocaleTimeString()}] [Boot] Tailscale interface up. Assigned IP: ${node.tailscaleIp}`);
-            newLogs.push(`[${new Date().toLocaleTimeString()}] [Boot] Foreground service started successfully. Re-binding to VLC RTMP stream...`);
+            newLogs.push(`[${new Date().toLocaleTimeString()}] [Boot] Foreground service started successfully. Re-binding to MPV RTMP stream...`);
             return {
               ...node,
               status: 'ONLINE',
@@ -337,7 +337,7 @@ export default function App() {
 
           if (n.appState === 'STREAM' || n.appState === 'STANDBY') {
             rtmpCount++;
-            totalBandwidth += n.vlcBitrateMbps;
+            totalBandwidth += n.mediaBitrateMbps;
           } else {
             usbCount++; // USB storage doesn't consume network bandwidth
           }
@@ -415,11 +415,11 @@ export default function App() {
                         isOverridden: true,
                         targetStreamUri: (action as any).streamUri || node.targetStreamUri,
                         streamUri: (action as any).streamUri || node.streamUri,
-                        vlcBitrateMbps: 4.5,
+                        mediaBitrateMbps: 4.5,
                         logs: [
                           ...node.logs,
                           `[${new Date().toLocaleTimeString()}] OVERRIDE: FORCE STREAM command executed.`,
-                          `[${new Date().toLocaleTimeString()}] VLC: Binding player to forced livestream URI.`
+                          `[${new Date().toLocaleTimeString()}] MPV: Binding player to forced livestream URI.`
                         ]
                       };
                     } else if (action.type === 'STANDBY') {
@@ -427,12 +427,12 @@ export default function App() {
                         ...node,
                         appState: 'STANDBY',
                         isOverridden: true,
-                        vlcBitrateMbps: 2.8,
+                        mediaBitrateMbps: 2.8,
                         streamUri: 'rtmp://10.200.4.1/live/ambient_multicam',
                         logs: [
                           ...node.logs,
                           `[${new Date().toLocaleTimeString()}] OVERRIDE: FORCE STANDBY command executed.`,
-                          `[${new Date().toLocaleTimeString()}] VLC: Diverting player decoder to ambient fallback loop.`
+                          `[${new Date().toLocaleTimeString()}] MPV: Diverting player decoder to ambient fallback loop.`
                         ]
                       };
                     } else if (action.type === 'RESYNC') {
@@ -443,7 +443,7 @@ export default function App() {
                         deviceTempC: 45,
                         cpuUsagePercent: 12,
                         appState: globalFleetState as any,
-                        vlcBitrateMbps: globalFleetState === 'STREAM' ? 4.5 : (globalFleetState === 'PLAYBACK' ? 12.8 : 2.8),
+                        mediaBitrateMbps: globalFleetState === 'STREAM' ? 4.5 : (globalFleetState === 'PLAYBACK' ? 12.8 : 2.8),
                         streamUri: globalFleetState === 'STREAM' 
                           ? node.targetStreamUri 
                           : (globalFleetState === 'PLAYBACK' ? 'file:///mnt/media_rw/usb_drive/loop.mp4' : 'rtmp://10.200.4.1/live/ambient_multicam'),
@@ -460,7 +460,7 @@ export default function App() {
                         deviceTempC: 42,
                         cpuUsagePercent: 8,
                         appState: globalFleetState as any,
-                        vlcBitrateMbps: globalFleetState === 'STREAM' ? 4.5 : (globalFleetState === 'PLAYBACK' ? 12.8 : 2.8),
+                        mediaBitrateMbps: globalFleetState === 'STREAM' ? 4.5 : (globalFleetState === 'PLAYBACK' ? 12.8 : 2.8),
                         streamUri: globalFleetState === 'STREAM' 
                           ? node.targetStreamUri 
                           : (globalFleetState === 'PLAYBACK' ? 'file:///mnt/media_rw/usb_drive/loop.mp4' : 'rtmp://10.200.4.1/live/ambient_multicam'),
@@ -527,7 +527,7 @@ export default function App() {
             replacementNodeId: newNodeId,
             status: 'OFFLINE',
             appState: 'STREAM',
-            vlcBitrateMbps: 0,
+            mediaBitrateMbps: 0,
             streamId: '',
             logs: [
               ...node.logs,
@@ -544,7 +544,7 @@ export default function App() {
             isDecommissioned: false,
             status: 'ONLINE',
             appState: oldNode.appState,
-            vlcBitrateMbps: 4.5,
+            mediaBitrateMbps: 4.5,
             streamId: oldNode.streamId || `venue_stream_${oldNode.id}`,
             targetStreamUri: oldNode.targetStreamUri,
             streamUri: oldNode.streamUri,
@@ -606,8 +606,8 @@ export default function App() {
             deviceTempC: 72,
             logs: [
               ...node.logs,
-              `[${new Date().toLocaleTimeString()}] CRITICAL: Native C++ player crash: SIGSEGV (signal 11) in libvlc.so decoder pipeline.`,
-              `[${new Date().toLocaleTimeString()}] CRITICAL: VLC player thread stalled. Screen rendering frozen.`
+              `[${new Date().toLocaleTimeString()}] CRITICAL: Native C++ player crash: SIGSEGV (signal 11) in libmpv.so decoder pipeline.`,
+              `[${new Date().toLocaleTimeString()}] CRITICAL: MPV player thread stalled. Screen rendering frozen.`
             ]
           };
         }
@@ -625,7 +625,7 @@ export default function App() {
       const next = prev.map((node) => {
         const newLogs = [...node.logs];
         let appState = node.appState;
-        let bitrate = node.vlcBitrateMbps;
+        let bitrate = node.mediaBitrateMbps;
         let uri = node.streamUri;
 
         if (!nextState) {
@@ -643,7 +643,7 @@ export default function App() {
             appState = 'STANDBY';
             bitrate = 2.8;
             uri = 'rtmp://10.200.4.1/live/ambient_multicam';
-            newLogs.push(`[${new Date().toLocaleTimeString()}] FAILOVER: Signal loss detected. No local USB. Swapping VLC rendering to ambient backup feed.`);
+            newLogs.push(`[${new Date().toLocaleTimeString()}] FAILOVER: Signal loss detected. No local USB. Swapping MPV rendering to ambient backup feed.`);
           }
         } else {
           // RTMP Signal Restored!
@@ -665,7 +665,7 @@ export default function App() {
         return {
           ...node,
           appState,
-          vlcBitrateMbps: bitrate,
+          mediaBitrateMbps: bitrate,
           streamUri: uri,
           logs: newLogs
         };
@@ -687,7 +687,7 @@ export default function App() {
 
         const newLogs = [...node.logs];
         let appState = node.appState;
-        let bitrate = node.vlcBitrateMbps;
+        let bitrate = node.mediaBitrateMbps;
         let uri = node.streamUri;
 
         if (event === 'stream_start') {
@@ -725,7 +725,7 @@ export default function App() {
         return {
           ...node,
           appState,
-          vlcBitrateMbps: bitrate,
+          mediaBitrateMbps: bitrate,
           streamUri: uri,
           logs: newLogs
         };
@@ -909,7 +909,7 @@ export default function App() {
               <button
                 onClick={triggerRandomDecoderCrash}
                 className="py-1.5 px-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono text-amber-500 hover:text-amber-400 transition-all flex items-center gap-1.5 shadow"
-                title="Simulate random native C++ crash of VLC for Android client service to test self-healing Watchdogs"
+                title="Simulate random native C++ crash of MPV for Android client service to test self-healing Watchdogs"
               >
                 <Flame className="w-4 h-4" />
                 {t('simulateCrash')}
@@ -995,7 +995,7 @@ export default function App() {
           )}
         </div>
 
-        {/* High Priority Alerts (VLC Crashed / Inactive Standby) */}
+        {/* High Priority Alerts (MPV Crashed / Inactive Standby) */}
         {(() => {
           const crashedNodes = endpoints.filter(
             (node) => node.status === 'WARNING' || node.accessKeyRevoked || (node.appState === 'STANDBY' && globalFleetState === 'STREAM')
