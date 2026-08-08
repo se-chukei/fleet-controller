@@ -13,10 +13,11 @@ object MPVLib {
     init {
         try {
             System.loadLibrary("mpv")
+            System.loadLibrary("player")
             isLibraryLoaded = true
-            Log.i(TAG, "Successfully loaded native libmpv library.")
+            Log.i(TAG, "Successfully loaded native libmpv and libplayer libraries.")
         } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "UnsatisfiedLinkError: Could not load native libmpv library. Using mock backend.", e)
+            Log.e(TAG, "UnsatisfiedLinkError: Could not load native libmpv or libplayer. Using mock backend.", e)
             isLibraryLoaded = false
         }
     }
