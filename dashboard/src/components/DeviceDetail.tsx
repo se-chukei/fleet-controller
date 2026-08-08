@@ -170,12 +170,12 @@ export default function DeviceDetail({
 
     onUpdateNode(node.id, {
       appState: target,
-      vlcBitrateMbps: bitrate,
+      mediaBitrateMbps: bitrate,
       streamUri: uri,
       logs: [
         ...node.logs,
         `[${new Date().toLocaleTimeString()}] EMERGENCY_OVERRIDE: Force state directive: "${target}"`,
-        `[${new Date().toLocaleTimeString()}] VLC: Loaded resource URI: "${uri}"`
+        `[${new Date().toLocaleTimeString()}] MPV: Loaded resource URI: "${uri}"`
       ]
     });
   };
@@ -260,12 +260,12 @@ export default function DeviceDetail({
       usbAttached: true,
       usbDebounceCountdown: null,
       appState: 'PLAYBACK',
-      vlcBitrateMbps: 12.8,
+      mediaBitrateMbps: 12.8,
       streamUri: 'file:///mnt/media_rw/usb_drive/loop.mp4',
       logs: [
         ...node.logs,
         `[${new Date().toLocaleTimeString()}] FAILOVER: USB 2.0 Priority Storage attached. Activating local failover loop.`,
-        `[${new Date().toLocaleTimeString()}] VLC: Loaded local media resource: "file:///mnt/media_rw/usb_drive/loop.mp4"`
+        `[${new Date().toLocaleTimeString()}] MPV: Loaded local media resource: "file:///mnt/media_rw/usb_drive/loop.mp4"`
       ]
     });
   };
@@ -456,7 +456,7 @@ export default function DeviceDetail({
               <span className="text-[8px] font-mono text-slate-500 uppercase">Bitrate</span>
             </div>
             <span className="text-[10px] font-mono font-bold text-slate-200 truncate pl-1">
-              {node.vlcBitrateMbps.toFixed(2)} Mbps
+              {node.mediaBitrateMbps.toFixed(2)} Mbps
             </span>
           </div>
         </div>
@@ -516,7 +516,7 @@ export default function DeviceDetail({
         <div className="mt-3 bg-slate-950/90 px-3.5 py-2.5 border border-slate-900 rounded-lg flex flex-col gap-1 select-all relative group shadow-sm">
           <span className="text-[9px] font-mono text-slate-500 font-black uppercase tracking-wider flex items-center gap-1.5">
             <span className={`w-1.5 h-1.5 rounded-full ${node.appState === 'STREAM' ? 'bg-indigo-400 animate-pulse' : 'bg-yellow-400 animate-pulse'}`}></span>
-            {locale === 'ja' ? '現在デコード中のアドレス (VLC READOUT):' : 'ACTIVE BROADCAST FEED ADDRESS (VLC READOUT):'}
+            {locale === 'ja' ? '現在デコード中のアドレス (MPV READOUT):' : 'ACTIVE BROADCAST FEED ADDRESS (MPV READOUT):'}
           </span>
           <div className="w-full overflow-hidden text-ellipsis whitespace-nowrap">
             <span 
@@ -633,7 +633,7 @@ export default function DeviceDetail({
                   
                   if (nextRevokedState) {
                     updates.appState = 'STANDBY';
-                    updates.vlcBitrateMbps = 0;
+                    updates.mediaBitrateMbps = 0;
                     updates.streamUri = 'rtmp://10.200.4.1/live/ambient_multicam';
                     updates.logs = [
                       ...node.logs,

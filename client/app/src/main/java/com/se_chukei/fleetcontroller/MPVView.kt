@@ -5,6 +5,7 @@ import android.util.AttributeSet
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.util.Log
+import `is`.xyz.mpv.MPVLib
 
 class MPVView @JvmOverloads constructor(
     context: Context,

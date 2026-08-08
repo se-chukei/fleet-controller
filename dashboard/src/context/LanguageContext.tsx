@@ -19,14 +19,14 @@ const translationsEN = {
   tabProvisioning: 'Provisioning Pipeline',
   triggerCut: 'Trigger RTMP Feed Cut',
   restoreCut: 'Restore RTMP Feed',
-  simulateCrash: 'Simulate VLC Crash',
+  simulateCrash: 'Simulate MPV Crash',
   
   // Dashboard Overview
   centralBridge: 'CENTRAL DATA BRIDGE & RELAY ENGINE',
   encryptedMeshActive: 'TAILSCALE ENCRYPTED MESH ACTIVE',
   filterAll: 'All Discovered Nodes',
   filterOnline: 'Online Nodes',
-  filterWarning: 'Warning (Crashed VLC)',
+  filterWarning: 'Warning (Crashed MPV)',
   filterOffline: 'Offline Nodes',
   ingestionLoad: 'Ingestion Load (Telebeat)',
   realtimeJitter: 'Real-time Jitter Stream',
@@ -51,8 +51,8 @@ const translationsEN = {
   watchdogAutoHealed: 'WATCHDOG AUTO-HEALED',
   watchdogRevived: 'The watchdog detected player stall and revived it!',
   forceWatchdog: 'Force Trigger Watchdog Recovery',
-  manualVlcVitals: 'Manual VLC Vitals Management',
-  vlcTargetStreamDirect: 'VLC Target Stream Direct Config',
+  manualMpvVitals: 'Manual MPV Vitals Management',
+  mpvTargetStreamDirect: 'MPV Target Stream Direct Config',
   updateStreamTarget: 'Update Stream Target',
   usbController: 'Simulated USB Drive Controller',
   usbPriorityConnected: 'USB 2.0 Priority Storage Connected',
@@ -96,7 +96,7 @@ const translationsEN = {
   targetNodeUpdates: 'Target Node Updates',
   installApk: 'Install APK',
   version: 'Version',
-  vlcPlayer: 'VLC Player',
+  mpvPlayer: 'MPV Player',
   
   // Provisioning Lab
   hardwareProvisioning: 'Hardware Provisioning Lab',
@@ -133,14 +133,14 @@ const translationsJA: Translations = {
   tabProvisioning: 'プロビジョニング・パイプライン',
   triggerCut: 'RTMPフィード遮断テスト',
   restoreCut: 'RTMPフィード復旧',
-  simulateCrash: 'VLCクラッシュテスト',
+  simulateCrash: 'MPVクラッシュテスト',
   
   // Dashboard Overview
   centralBridge: '中央データブリッジ ＆ リレーエンジン',
   encryptedMeshActive: 'Tailscale暗号化メッシュ有効',
   filterAll: '全検出ノード',
   filterOnline: 'オンラインノード',
-  filterWarning: '警告（VLCダウン）',
+  filterWarning: '警告（MPVダウン）',
   filterOffline: 'オフラインノード',
   ingestionLoad: 'インジェスト負荷（テレメトリ）',
   realtimeJitter: 'リアルタイムジッターストリーム',
@@ -165,8 +165,8 @@ const translationsJA: Translations = {
   watchdogAutoHealed: 'ウォッチドッグ自己修復完了',
   watchdogRevived: 'ウォッチドッグがプレイヤーのフリーズを検知し、自動復旧しました。',
   forceWatchdog: 'ウォッチドッグ強制復旧',
-  manualVlcVitals: 'VLC手動制御パネル',
-  vlcTargetStreamDirect: 'VLCターゲットストリーム直接設定',
+  manualMpvVitals: 'MPV手動制御パネル',
+  mpvTargetStreamDirect: 'MPVターゲットストリーム直接設定',
   updateStreamTarget: 'ストリームターゲットを更新',
   usbController: '仮想USBドライブコントローラ',
   usbPriorityConnected: 'USB 2.0優先ストレージ接続中',
@@ -210,7 +210,7 @@ const translationsJA: Translations = {
   targetNodeUpdates: '対象ノードの更新',
   installApk: 'APKをインストール',
   version: 'バージョン',
-  vlcPlayer: 'VLCプレイヤー',
+  mpvPlayer: 'MPVプレイヤー',
   
   // Provisioning Lab
   hardwareProvisioning: 'ハードウェア・プロビジョニング・ラボ',

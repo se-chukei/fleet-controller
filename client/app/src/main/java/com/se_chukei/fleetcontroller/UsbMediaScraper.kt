@@ -3,11 +3,16 @@ package com.se_chukei.fleetcontroller
 import android.content.Context
 import android.os.FileObserver
 import android.util.Log
+import kotlinx.coroutines.*
 import java.io.File
 
-class UsbMediaScraper(private val context: Context, private val onPlaylistUpdated: (List<File>) -> Unit) {
+class UsbMediaScraper(
+    private val context: Context,
+    private val onPlaylistUpdated: (List<File>) -> Unit
+) {
 
     private val TAG = "UsbMediaScraper"
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     // Set of allowed media formats as requested
     private val mediaExtensions = setOf("mp4", "mkv", "mov", "mp3")
@@ -23,48 +28,65 @@ class UsbMediaScraper(private val context: Context, private val onPlaylistUpdate
     }
 
     /**
-     * Scans standard directory roots for USB devices and indexes media.
+     * Scans standard directory roots for USB devices asynchronously on a background thread.
      */
     fun startScraping() {
-        Log.i(TAG, "Triggering automatic USB storage path sweep")
-        val scannedFiles = mutableListOf<File>()
-        usbMountRoots.forEach { rootPath ->
-            val rootDir = File(rootPath)
-            if (rootDir.exists() && rootDir.isDirectory) {
-                // Look for sub-directories in /storage or /mnt that typically represent mounted volumes
-                val subDirs = rootDir.listFiles() ?: return@forEach
-                subDirs.forEach { subDir ->
-                    // Filter out standard non-removable storage if possible, but scan everything in storage
-                    if (subDir.isDirectory && subDir.name != "self" && subDir.name != "emulated") {
-                        Log.i(TAG, "Scanning potential USB mount: ${subDir.absolutePath}")
-                        scanDirectory(subDir, scannedFiles)
-                        setupDirectoryObserver(subDir)
+        Log.i(TAG, "Triggering asynchronous USB storage path sweep")
+        scope.launch {
+            val scannedFiles = withContext(Dispatchers.IO) {
+                val list = mutableListOf<File>()
+
+                // Sweep major storage mount roots
+                usbMountRoots.forEach { rootPath ->
+                    val rootDir = File(rootPath)
+                    if (rootDir.exists() && rootDir.isDirectory) {
+                        val subDirs = rootDir.listFiles() ?: return@forEach
+                        subDirs.forEach { subDir ->
+                            if (subDir.isDirectory && subDir.name != "self" && subDir.name != "emulated") {
+                                Log.i(TAG, "Scanning potential USB mount on IO thread: ${subDir.absolutePath}")
+                                scanDirectory(subDir, list, 0)
+                                withContext(Dispatchers.Main) {
+                                    setupDirectoryObserver(subDir)
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        }
 
-        // Fallback or development sweep: check if there's external files directory in application sandbox
-        val externalFilesDirs = context.getExternalFilesDirs(null)
-        externalFilesDirs.forEach { dir ->
-            if (dir != null && dir.exists()) {
-                Log.i(TAG, "Scanning app sandbox external storage: ${dir.absolutePath}")
-                scanDirectory(dir, scannedFiles)
-                setupDirectoryObserver(dir)
+                // Check external files directories in the application sandbox
+                val externalFilesDirs = context.getExternalFilesDirs(null)
+                externalFilesDirs.forEach { dir ->
+                    if (dir != null && dir.exists()) {
+                        Log.i(TAG, "Scanning app sandbox storage on IO thread: ${dir.absolutePath}")
+                        scanDirectory(dir, list, 0)
+                        withContext(Dispatchers.Main) {
+                            setupDirectoryObserver(dir)
+                        }
+                    }
+                }
+                list
             }
-        }
 
-        currentPlaylist.clear()
-        currentPlaylist.addAll(scannedFiles)
-        onPlaylistUpdated(currentPlaylist)
+            Log.i(TAG, "Finished background scanning. Found ${scannedFiles.size} media files.")
+            currentPlaylist.clear()
+            currentPlaylist.addAll(scannedFiles)
+            onPlaylistUpdated(currentPlaylist)
+        }
     }
 
-    private fun scanDirectory(dir: File, list: MutableList<File>) {
+    /**
+     * Traverses the directory recursively with explicit depth boundary controls.
+     */
+    private fun scanDirectory(dir: File, list: MutableList<File>, currentDepth: Int) {
+        // Enforce the depth limit of 3 to prevent performance bottlenecks or stack overflows
+        if (currentDepth > 3) {
+            return
+        }
+
         val files = dir.listFiles() ?: return
         files.forEach { file ->
             if (file.isDirectory) {
-                // Restrict recursive depth to 3 to prevent performance bottlenecks on massive filesystems
-                scanDirectory(file, list)
+                scanDirectory(file, list, currentDepth + 1)
             } else if (file.isFile) {
                 val ext = file.extension.lowercase()
                 if (mediaExtensions.contains(ext)) {
@@ -79,13 +101,16 @@ class UsbMediaScraper(private val context: Context, private val onPlaylistUpdate
      * Dynamic folder listener to auto-add or remove files during USB live sync.
      */
     private fun setupDirectoryObserver(dir: File) {
+        // Prevent duplicate observers on the same folder
+        if (observers.any { it.toString().contains(dir.absolutePath) }) return
+
         try {
             // Monitor create and delete actions
             val observer = object : FileObserver(dir.absolutePath, CREATE or DELETE) {
                 override fun onEvent(event: Int, path: String?) {
                     if (path != null) {
-                        Log.i(TAG, "FileObserver event $event detected for: $path")
-                        // Trigger a rescrape when a change is detected
+                        Log.i(TAG, "FileObserver event $event detected for: $path. Triggering rescrape.")
+                        // Trigger rescrape asynchronously
                         startScraping()
                     }
                 }
@@ -103,5 +128,6 @@ class UsbMediaScraper(private val context: Context, private val onPlaylistUpdate
     fun stopScraping() {
         observers.forEach { it.stopWatching() }
         observers.clear()
+        scope.cancel()
     }
 }

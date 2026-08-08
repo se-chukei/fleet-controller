@@ -4,12 +4,12 @@ const port = 8080;
 
 app.use(express.json());
 
-// Initial state – matches PROJECT_SPEC.md contract
+// Initial state – matches updated contract
 let currentState = {
     appState: "STANDBY",
     streamUrl: "rtmp://10.200.4.1/live/ambient_multicam", // Default standby stream
     accessKeyRevoked: false,
-    vlcBitrateMbps: 0,
+    mediaBitrateMbps: 0,
     timestamp: Math.floor(Date.now() / 1000)
 };
 
@@ -20,11 +20,11 @@ app.get('/api/state', (req, res) => {
 
 // POST /api/update – allows dashboard or external tools to modify state
 app.post('/api/update', (req, res) => {
-    const { streamUrl, appState, accessKeyRevoked, vlcBitrateMbps } = req.body;
+    const { streamUrl, appState, accessKeyRevoked, mediaBitrateMbps } = req.body;
     if (streamUrl !== undefined) currentState.streamUrl = streamUrl;
     if (appState !== undefined) currentState.appState = appState;
     if (accessKeyRevoked !== undefined) currentState.accessKeyRevoked = accessKeyRevoked;
-    if (vlcBitrateMbps !== undefined) currentState.vlcBitrateMbps = vlcBitrateMbps;
+    if (mediaBitrateMbps !== undefined) currentState.mediaBitrateMbps = mediaBitrateMbps;
     currentState.timestamp = Math.floor(Date.now() / 1000);
     console.log(`[API] State updated via /api/update`);
     res.status(200).json({ message: "State updated", state: currentState });
@@ -39,7 +39,7 @@ app.post('/api/webhook/tvu', (req, res) => {
             appState: "STREAM",
             streamUrl: "rtmp://10.74.35.53/live/high_quality_event", // Example live stream URL
             accessKeyRevoked: false,
-            vlcBitrateMbps: 0,
+            mediaBitrateMbps: 0,
             timestamp: Math.floor(Date.now() / 1000)
         };
         console.log(`[Webhook] TVU Stream Started! Switching Android TVs to: ${currentState.streamUrl}`);
@@ -48,7 +48,7 @@ app.post('/api/webhook/tvu', (req, res) => {
             appState: "STANDBY",
             streamUrl: "rtmp://10.200.4.1/live/ambient_multicam", // Back to standby
             accessKeyRevoked: false,
-            vlcBitrateMbps: 0,
+            mediaBitrateMbps: 0,
             timestamp: Math.floor(Date.now() / 1000)
         };
         console.log(`[Webhook] TVU Stream Stopped. Switching Android TVs to: ${currentState.streamUrl}`);

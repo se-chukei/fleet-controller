@@ -790,14 +790,14 @@ export default function DeviceGrid({
               
               let bitrateColor = 'text-slate-300';
               if (node.appState === 'STREAM') {
-                if (node.vlcBitrateMbps < 2.0) bitrateColor = 'text-rose-400';
-                else if (node.vlcBitrateMbps < 3.5) bitrateColor = 'text-amber-400';
+                if (node.mediaBitrateMbps < 2.0) bitrateColor = 'text-rose-400';
+                else if (node.mediaBitrateMbps < 3.5) bitrateColor = 'text-amber-400';
               } else if (node.appState === 'STANDBY') {
-                if (node.vlcBitrateMbps < 1.0) bitrateColor = 'text-rose-400';
-                else if (node.vlcBitrateMbps < 2.0) bitrateColor = 'text-amber-400';
+                if (node.mediaBitrateMbps < 1.0) bitrateColor = 'text-rose-400';
+                else if (node.mediaBitrateMbps < 2.0) bitrateColor = 'text-amber-400';
               } else if (node.appState === 'PLAYBACK') {
-                if (node.vlcBitrateMbps < 5.0) bitrateColor = 'text-rose-400';
-                else if (node.vlcBitrateMbps < 10.0) bitrateColor = 'text-amber-400';
+                if (node.mediaBitrateMbps < 5.0) bitrateColor = 'text-rose-400';
+                else if (node.mediaBitrateMbps < 10.0) bitrateColor = 'text-amber-400';
               }
               
               let tempColor = 'text-slate-300';
@@ -884,7 +884,7 @@ export default function DeviceGrid({
                                 {node.accessKeyRevoked
                                   ? (locale === 'ja' ? 'デバイスロック' : 'DEVICE LOCKED')
                                   : node.status === 'WARNING'
-                                    ? (locale === 'ja' ? 'VLCクラッシュ' : 'DECODER CRASH')
+                                    ? (locale === 'ja' ? 'MPVクラッシュ' : 'DECODER CRASH')
                                     : (locale === 'ja' ? '同期エラー' : 'FLEET DESYNC')
                                 }
                               </span>
@@ -936,7 +936,7 @@ export default function DeviceGrid({
                     </div>
                     <div className="text-right w-20">
                       <span className="text-[10px] text-slate-500 block uppercase">{locale === 'ja' ? 'ビットレート' : 'Bitrate'}</span>
-                      <span className={`font-semibold text-right block w-full ${bitrateColor}`}>{node.vlcBitrateMbps.toFixed(2)} Mbps</span>
+                      <span className={`font-semibold text-right block w-full ${bitrateColor}`}>{node.mediaBitrateMbps.toFixed(2)} Mbps</span>
                     </div>
                     <div className="hidden sm:block text-right w-16">
                       <span className="text-[10px] text-slate-500 block uppercase">Temp</span>

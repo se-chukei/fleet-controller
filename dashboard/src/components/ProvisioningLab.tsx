@@ -5,7 +5,7 @@ import { useTranslation } from '../context/LanguageContext';
 export default function ProvisioningLab() {
   const [apkName, setApkName] = useState('fleet-controller.apk');
   const [tailscaleApk, setTailscaleApk] = useState('tailscale-android.apk');
-  const [vlcApk, setVlcApk] = useState('vlc-android.apk');
+  const [playerApk, setPlayerApk] = useState('mpv-android.apk');
   const [currentStep, setCurrentStep] = useState(0);
   const [chkSetup, setChkSetup] = useState(false);
   const [chkDevMode, setChkDevMode] = useState(false);
@@ -107,7 +107,7 @@ set -e
 echo "Starting deployment..."
 adb install -t -r -g ./${apkName}
 adb install -t -r -g ./${tailscaleApk}
-adb install -t -r -g ./${vlcApk}
+adb install -t -r -g ./${playerApk}
 adb shell dumpsys deviceidle whitelist +com.tailscale.ipn
 adb shell dumpsys deviceidle whitelist +com.se_chukei.fleetcontroller
 adb shell settings put system screen_off_timeout 2147483647
@@ -323,17 +323,17 @@ echo "Provisioning complete!"`;
               </div>
               <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
                 <label className="text-[10px] font-mono font-bold text-slate-400 uppercase block mb-2">
-                  3. {locale === 'ja' ? 'VLCプレイヤー' : 'VLC Player'} (org.videolan.vlc)
+                  3. {locale === 'ja' ? 'MPVプレイヤー' : 'MPV Player'} (org.videolan.mpv)
                 </label>
                 <div className="flex flex-col gap-3">
                   <div className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-sm font-mono text-slate-300 break-all">
-                    {vlcApk}
+                    {playerApk}
                   </div>
                   <label className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-4 py-3 rounded-lg text-xs font-mono flex items-center justify-center cursor-pointer transition-all shrink-0">
                     <FolderOpen className="w-4 h-4 mr-2" />
                     {locale === 'ja' ? '参照' : 'Browse'}
                     <input type="file" accept=".apk" className="hidden" onChange={e => {
-                      if (e.target.files?.[0]) setVlcApk(e.target.files[0].name);
+                      if (e.target.files?.[0]) setPlayerApk(e.target.files[0].name);
                     }} />
                   </label>
                 </div>

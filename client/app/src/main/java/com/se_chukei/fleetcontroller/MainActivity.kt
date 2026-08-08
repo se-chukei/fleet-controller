@@ -6,6 +6,7 @@ import android.os.PowerManager
 import android.util.Log
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
+import `is`.xyz.mpv.MPVLib
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
