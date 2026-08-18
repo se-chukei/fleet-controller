@@ -1,0 +1,68 @@
+# --- Client (Android / Kotlin) in /fleet-controller/client ---
+/fleet-controller/client/*.iml
+/fleet-controller/client/.gradle/
+/fleet-controller/client/local.properties
+/fleet-controller/client/.idea/caches
+/fleet-controller/client/.idea/libraries
+/fleet-controller/client/.idea/modules.xml
+/fleet-controller/client/.idea/workspace.xml
+/fleet-controller/client/.idea/navEditor.xml
+/fleet-controller/client/.idea/assetWizardSettings.xml
+/fleet-controller/client/build/
+/fleet-controller/client/captures/
+/fleet-controller/client/.externalNativeBuild
+/fleet-controller/client/.cxx
+
+# --- Dashboard (Node.js / Web) in /fleet-controller/dashboard ---
+/fleet-controller/dashboard/node_modules/
+/fleet-controller/dashboard/build/
+/fleet-controller/dashboard/dist/
+/fleet-controller/dashboard/coverage/
+/fleet-controller/dashboard/*.log
+/fleet-controller/dashboard/.env*
+!/fleet-controller/dashboard/.env.example
+
+# --- Fleet Controller Logs ---
+/fleet-controller/logs/
+
+# --- General IDE & OS ---
+.DS_Store
+*.iws
+
+# Built application files
+*.apk
+*.apks
+*.aab
+
+# Files for the Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (sdk path, etc.)
+local.properties
+
+# IDE files
+.idea/
+.DS_Store
+*.iml
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+# Log files
+*.log

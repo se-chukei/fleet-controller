@@ -52,4 +52,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.videolan.libvlc)
     implementation(libs.okhttp)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.ui)
 }

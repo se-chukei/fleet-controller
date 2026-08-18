@@ -8,6 +8,11 @@ import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -44,11 +49,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mediaPlayer: MediaPlayer
     private lateinit var vlcVideoLayout: VLCVideoLayout
 
+    private var exoPlayer: ExoPlayer? = null
+    private lateinit var exoPlayerView: PlayerView
+
     private var wakeLock: PowerManager.WakeLock? = null
     private var targetVolume = 100
     private var blackOverlay: View? = null
 
-    /** Single-flight gate for play/stop/recreate (replaces fragile boolean-only logic). */
     private val playerMutex = Mutex()
     private val isTransitioning = AtomicBoolean(false)
 
@@ -81,15 +88,12 @@ class MainActivity : AppCompatActivity() {
     private var watchdogJob: Job? = null
     private var keepaliveJob: Job? = null
 
-    /** After soft reload, require progress before this elapsed or escalate to hard reset. */
     private var softRecoveryDeadlineMs: Long = 0L
     private var awaitingSoftRecoveryProgress = false
 
-    /** Rate-limit hard resets. */
     private var lastHardResetMs: Long = 0L
     private val hardResetCooldownMs = 120_000L
 
-    /** STANDBY proactive keepalive interval (50 minutes). */
     private val standbyKeepaliveIntervalMs = 50 * 60 * 1000L
     private var lastKeepaliveMs: Long = 0L
 
@@ -100,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         vlcVideoLayout = findViewById(R.id.vlc_video_layout)
+        exoPlayerView = findViewById(R.id.exo_player_view)
 
         blackOverlay = View(this).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
@@ -113,6 +118,14 @@ class MainActivity : AppCompatActivity() {
         (findViewById<View>(android.R.id.content) as? android.view.ViewGroup)
             ?.addView(blackOverlay)
 
+        // Initialize black overlay as fully visible on startup to prevent pop-in
+        blackOverlay?.apply {
+            alpha = 1f
+            visibility = View.VISIBLE
+            bringToFront()
+        }
+        setPlayerVolume(0)
+
         val args = ArrayList<String>().apply {
             add("-vvv")
             add("--http-reconnect")
@@ -124,6 +137,8 @@ class MainActivity : AppCompatActivity() {
         mediaPlayer.attachViews(vlcVideoLayout, null, true, false)
         attachPlayerEventListener()
 
+        initExoPlayer()
+
         fleetServiceIntent = Intent(this, FleetService::class.java)
         startService(fleetServiceIntent)
 
@@ -132,15 +147,54 @@ class MainActivity : AppCompatActivity() {
         startStandbyKeepalive()
     }
 
+    private fun initExoPlayer() {
+        if (exoPlayer == null) {
+            exoPlayer = ExoPlayer.Builder(this).build().apply {
+                addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        consecutivePlaybackErrors++
+                        logFreeze("ExoPlayer error: ${error.message}")
+                        Log.w("MainActivity", "ExoPlayer error (count=$consecutivePlaybackErrors)")
+
+                        if (consecutivePlaybackErrors < 4) {
+                            currentStreamUrl?.let { url ->
+                                runOnUiThread { playStream(url, isRecovery = true) }
+                            }
+                        } else {
+                            Log.e("MainActivity", "Too many ExoPlayer errors → hard reset")
+                            consecutivePlaybackErrors = 0
+                            runOnUiThread { recreateMediaPlayer() }
+                        }
+                    }
+                })
+            }
+            exoPlayerView.player = exoPlayer
+        }
+    }
+
+    private fun useVlcFor(url: String): Boolean {
+        val u = url.lowercase()
+        return u.startsWith("rtmp://") || u.startsWith("rtsp://")
+    }
+
     private fun forceStopImmediate() {
         try {
             mediaPlayer.stop()
             mediaPlayer.media?.release()
             mediaPlayer.media = null
         } catch (e: Exception) {
-            Log.w("MainActivity", "forceStopImmediate error: ${e.message}")
+            Log.w("MainActivity", "VLC stop error: ${e.message}")
         }
+
+        try {
+            exoPlayer?.stop()
+            exoPlayer?.clearMediaItems()
+        } catch (e: Exception) {
+            Log.w("MainActivity", "ExoPlayer stop error: ${e.message}")
+        }
+
         vlcVideoLayout.visibility = View.GONE
+        exoPlayerView.visibility = View.GONE
         lastCheckedPosition = -1L
         setPlayerVolume(0)
     }
@@ -187,7 +241,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun setPlayerVolume(vol: Int) {
         try {
-            mediaPlayer.volume = vol.coerceIn(0, 100)
+            val clampedVol = vol.coerceIn(0, 100)
+            mediaPlayer.volume = clampedVol
+            exoPlayer?.volume = clampedVol / 100f
         } catch (e: Exception) {
             Log.w("MainActivity", "setPlayerVolume failed: ${e.message}")
         }
@@ -229,7 +285,7 @@ class MainActivity : AppCompatActivity() {
                     client.newCall(request).execute().use { response ->
                         if (response.isSuccessful) {
                             consecutiveNetworkFailures = 0
-                            response.body?.string()?.let { responseBody ->
+                            response.body.string().let { responseBody ->
                                 val json = JSONObject(responseBody)
                                 val newStreamUrl = json.optString("streamUrl", "")
                                 val appStateString = json.optString("appState", "STANDBY")
@@ -306,13 +362,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * @param isRecovery when true, may cache-bust HLS playlist and mark soft-recovery deadline.
-     */
     fun playStream(url: String, isRecovery: Boolean = false) {
         if (url.isBlank()) return
 
-        // Prevent overlapping transitions; recovery may force-clear a stuck flag.
         if (!isTransitioning.compareAndSet(false, true)) {
             if (isRecovery) {
                 Log.w("MainActivity", "Forcing transition gate open for recovery")
@@ -323,10 +375,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        Log.i("MainActivity", "playStream: $url recovery=$isRecovery")
+        val engineName = if (useVlcFor(url)) "VLC" else "ExoPlayer"
+        Log.i("MainActivity", "playStream ($engineName): $url recovery=$isRecovery")
 
-        vlcVideoLayout.visibility = View.VISIBLE
-        vlcVideoLayout.bringToFront()
+        if (useVlcFor(url)) {
+            vlcVideoLayout.visibility = View.VISIBLE
+            vlcVideoLayout.bringToFront()
+            exoPlayerView.visibility = View.GONE
+        } else {
+            exoPlayerView.visibility = View.VISIBLE
+            exoPlayerView.bringToFront()
+            vlcVideoLayout.visibility = View.GONE
+        }
 
         val overlay = blackOverlay
         if (overlay == null) {
@@ -352,21 +412,20 @@ class MainActivity : AppCompatActivity() {
             playerMutex.withLock {
                 withContext(Dispatchers.Main) {
                     startMediaInternal(url, isRecovery)
-                }
-            }
-
-            withContext(Dispatchers.Main) {
-                overlay.postDelayed({
+                    
+                    // Fade out black overlay to reveal the new video smoothly
                     overlay.animate()
                         .alpha(0f)
-                        .setDuration(450)
+                        .setDuration(1500)
                         .withEndAction {
                             overlay.visibility = View.GONE
                             isTransitioning.set(false)
                         }
                         .start()
-                    fadeVolumeIn(from = 0, to = targetVolume, durationMs = 450)
-                }, 300)
+
+                    // Ramp audio up smoothly
+                    fadeVolumeIn(from = 0, to = targetVolume, durationMs = 1500)
+                }
             }
 
             if (isRecovery) {
@@ -380,31 +439,43 @@ class MainActivity : AppCompatActivity() {
 
     private fun startMediaInternal(url: String, isRecovery: Boolean) {
         try {
-            val isStandbyFeed = url.contains("standby", ignoreCase = true) ||
-                    currentState == State.STANDBY
+            if (useVlcFor(url)) {
+                val media = Media(libVLC, url.toUri()).apply {
+                    setHWDecoderEnabled(true, false)
+                    addOption(":network-caching=5000")
+                    addOption(":live-caching=5000")
+                    addOption(":http-reconnect")
+                }
 
-            val networkCache = if (isStandbyFeed) "20000" else "5000"
-            val liveCache = if (isStandbyFeed) "20000" else "5000"
+                mediaPlayer.stop()
+                mediaPlayer.media?.release()
+                mediaPlayer.media = media
+                mediaPlayer.play()
 
-            // On recovery, cache-bust playlist fetch (same logical URL, force re-request).
-            val playUrl = if (isRecovery && url.contains(".m3u8", ignoreCase = true)) {
-                val sep = if (url.contains("?")) "&" else "?"
-                "$url${sep}_ts=${System.currentTimeMillis()}"
+                Log.i("MainActivity", "VLC playing: $url")
             } else {
-                url
-            }
+                initExoPlayer()
+                runOnUiThread {
+                    // Hide the black overlay and VLC layout to ensure video renders on top
+                    blackOverlay?.visibility = View.GONE
+                    vlcVideoLayout.visibility = View.GONE
+                    
+                    exoPlayerView.visibility = View.VISIBLE
+                    exoPlayerView.bringToFront()
+                    exoPlayerView.player = exoPlayer
+                    
+                    // Disable and hide all built-in playback controllers (buttons, seekbar, etc.)
+                    exoPlayerView.useController = false
 
-            val media = Media(libVLC, playUrl.toUri()).apply {
-                setHWDecoderEnabled(true, false)
-                addOption(":network-caching=$networkCache")
-                addOption(":live-caching=$liveCache")
-                addOption(":http-reconnect")
+                    exoPlayer?.let { player ->
+                        val mediaItem = MediaItem.fromUri(url.toUri())
+                        player.setMediaItem(mediaItem)
+                        player.prepare()
+                        player.playWhenReady = true
+                    }
+                }
+                Log.i("MainActivity", "ExoPlayer playing: $url")
             }
-
-            mediaPlayer.stop()
-            mediaPlayer.media?.release()
-            mediaPlayer.media = media
-            mediaPlayer.play()
 
             lastCheckedPosition = -1L
             consecutivePlaybackErrors = 0
@@ -437,23 +508,35 @@ class MainActivity : AppCompatActivity() {
                         isTransitioning.set(false)
                         awaitingSoftRecoveryProgress = false
 
-                        try {
-                            mediaPlayer.stop()
-                            mediaPlayer.media?.release()
-                            mediaPlayer.media = null
-                            mediaPlayer.detachViews()
-                            mediaPlayer.release()
-                        } catch (e: Exception) {
-                            Log.w("MainActivity", "Old player teardown: ${e.message}")
+                        val url = currentStreamUrl
+                        if (url != null) {
+                            if (useVlcFor(url)) {
+                                try {
+                                    mediaPlayer.stop()
+                                    mediaPlayer.media?.release()
+                                    mediaPlayer.media = null
+                                    mediaPlayer.detachViews()
+                                    mediaPlayer.release()
+                                } catch (e: Exception) {
+                                    Log.w("MainActivity", "Old player teardown: ${e.message}")
+                                }
+
+                                mediaPlayer = MediaPlayer(libVLC)
+                                mediaPlayer.attachViews(vlcVideoLayout, null, true, false)
+                                attachPlayerEventListener()
+                            } else {
+                                try {
+                                    exoPlayer?.stop()
+                                    exoPlayer?.release()
+                                    exoPlayer = null
+                                } catch (e: Exception) {
+                                    Log.w("MainActivity", "ExoPlayer teardown error: ${e.message}")
+                                }
+                                initExoPlayer()
+                            }
                         }
 
-                        mediaPlayer = MediaPlayer(libVLC)
-                        mediaPlayer.attachViews(vlcVideoLayout, null, true, false)
-                        attachPlayerEventListener()
-
-                        currentStreamUrl?.let { url ->
-                            playStream(url, isRecovery = true)
-                        }
+                        currentStreamUrl?.let { playStream(it, isRecovery = true) }
                     } catch (e: Exception) {
                         Log.e("MainActivity", "Hard player reset failed", e)
                         isTransitioning.set(false)
@@ -483,7 +566,7 @@ class MainActivity : AppCompatActivity() {
 
         overlay.animate()
             .alpha(1f)
-            .setDuration(400)
+            .setDuration(1500)
             .withEndAction {
                 scope.launch {
                     playerMutex.withLock {
@@ -496,7 +579,7 @@ class MainActivity : AppCompatActivity() {
             }
             .start()
 
-        fadeVolumeOut(from = targetVolume, to = 0, durationMs = 400)
+        fadeVolumeOut(from = targetVolume, to = 0, durationMs = 1500)
     }
 
     private fun startIndependentWatchdog() {
@@ -505,28 +588,26 @@ class MainActivity : AppCompatActivity() {
             while (isActive) {
                 delay(10_000)
                 try {
-                    if (currentStreamUrl.isNullOrEmpty()) continue
-
-                    // Clear stuck transition after 15s
-                    if (isTransitioning.get()) {
-                        // allow in-progress fades; only log
-                        Log.d("MainActivity", "Watchdog: transition in progress")
-                    }
+                    val url = withContext(Dispatchers.Main) { currentStreamUrl }
+                    if (url.isNullOrEmpty()) continue
 
                     val currentPos = withTimeoutOrNull(2000) {
                         try {
-                            mediaPlayer.time
+                            if (useVlcFor(url)) {
+                                mediaPlayer.time
+                            } else {
+                                withContext(Dispatchers.Main) {
+                                    exoPlayer?.currentPosition ?: 0L
+                                }
+                            }
                         } catch (e: Exception) {
                             null
                         }
                     }
 
-                    val isTimeAdvancing =
-                        currentPos != null && currentPos != -1L && currentPos != lastCheckedPosition
-
-                    if (isTimeAdvancing) {
+                    if (currentPos != null && currentPos != -1L && currentPos != lastCheckedPosition) {
                         consecutiveStalls = 0
-                        lastCheckedPosition = currentPos!!
+                        lastCheckedPosition = currentPos
                         if (awaitingSoftRecoveryProgress) {
                             logFreeze("Soft recovery succeeded (time advancing)")
                             awaitingSoftRecoveryProgress = false
@@ -538,7 +619,6 @@ class MainActivity : AppCompatActivity() {
                         reportFreezeToDataBridge("Stall detected (count=$consecutiveStalls)")
                     }
 
-                    // Soft recovery failed to restore progress → hard reset
                     if (awaitingSoftRecoveryProgress &&
                         System.currentTimeMillis() > softRecoveryDeadlineMs
                     ) {
@@ -570,17 +650,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Proactive STANDBY restart to clear long-running HLS demux stalls. */
     private fun startStandbyKeepalive() {
         keepaliveJob?.cancel()
         lastKeepaliveMs = System.currentTimeMillis()
         keepaliveJob = scope.launch(Dispatchers.IO) {
             while (isActive) {
-                delay(60_000) // check every minute
+                delay(60_000)
                 try {
                     if (currentState != State.STANDBY) continue
-                    if (currentStreamUrl.isNullOrEmpty()) continue
                     if (isTransitioning.get()) continue
+
+                    val urlSnapshot = withContext(Dispatchers.Main) { currentStreamUrl }
+                    if (urlSnapshot.isNullOrEmpty()) continue
 
                     val elapsed = System.currentTimeMillis() - lastKeepaliveMs
                     if (elapsed >= standbyKeepaliveIntervalMs) {
@@ -588,7 +669,7 @@ class MainActivity : AppCompatActivity() {
                         Log.i("MainActivity", "STANDBY keepalive → controlled restart")
                         lastKeepaliveMs = System.currentTimeMillis()
                         withContext(Dispatchers.Main) {
-                            currentStreamUrl?.let { playStream(it, isRecovery = true) }
+                            playStream(urlSnapshot, isRecovery = true)
                         }
                     }
                 } catch (e: Exception) {
@@ -600,7 +681,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun logFreeze(message: String) {
         val time = try {
-            mediaPlayer.time
+            val url = currentStreamUrl ?: ""
+            if (useVlcFor(url)) mediaPlayer.time else (exoPlayer?.currentPosition ?: 0L)
         } catch (e: Exception) {
             -1L
         }
@@ -685,6 +767,8 @@ class MainActivity : AppCompatActivity() {
             mediaPlayer.media?.release()
             mediaPlayer.release()
             libVLC.release()
+            exoPlayer?.release()
+            exoPlayer = null
         } catch (e: Exception) {
             Log.w("MainActivity", "Release error: ${e.message}")
         }
