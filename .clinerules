@@ -1,0 +1,18 @@
+# Agent Directives
+
+1. **Read Requirements First**: Always review `PROJECT_SPEC.md` to understand system architecture, data contracts, and operational states.
+2. **Consult the Roadmap**: Read `ROADMAP.md` to identify the current development phase, task priorities, and planned architecture before making non-trivial changes.
+3. **Keep Docs Updated**: When completing roadmap milestones or altering data models, update `ROADMAP.md` and `PROJECT_SPEC.md` accordingly.
+
+# PONYTAIL & SIMPLICITY RULES
+
+1. YAGNI (You Ain't Gonna Need It): Write only the bare minimum code requested.
+2. REUSE EXISTING CODE: Check existing files for utilities before creating new ones.
+3. NATIVE FIRST: Prefer native browser/language capabilities over installing npm packages.
+4. TERSE OUTPUT: Keep explanations brief and focus on clean file diffs.
+
+# Context Boundaries for Cerebras Coding Agent
+- DO NOT read or index directories like node_modules, .next, dist, build, or .git.
+- Focus exclusively on the /src folder or files explicitly declared in the prompt.
+- Do not search the entire repository for general answers; read specific files directly.
+- Prioritize structural performance. Write tight, strictly typed code blocks.
