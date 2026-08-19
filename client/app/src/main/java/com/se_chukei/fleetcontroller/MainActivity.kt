@@ -118,7 +118,6 @@ class MainActivity : AppCompatActivity() {
         (findViewById<View>(android.R.id.content) as? android.view.ViewGroup)
             ?.addView(blackOverlay)
 
-        // Initialize black overlay as fully visible on startup to prevent pop-in
         blackOverlay?.apply {
             alpha = 1f
             visibility = View.VISIBLE
@@ -161,7 +160,7 @@ class MainActivity : AppCompatActivity() {
                                 runOnUiThread { playStream(url, isRecovery = true) }
                             }
                         } else {
-                            Log.e("MainActivity", "Too many ExoPlayer errors → hard reset")
+                            Log.e("MainActivity", "Too many ExoPlayer errors → fallback to standby or hard reset")
                             consecutivePlaybackErrors = 0
                             runOnUiThread { recreateMediaPlayer() }
                         }
@@ -263,7 +262,7 @@ class MainActivity : AppCompatActivity() {
                             runOnUiThread { playStream(url, isRecovery = true) }
                         }
                     } else {
-                        Log.e("MainActivity", "Too many playback errors → hard reset")
+                        Log.e("MainActivity", "Too many playback errors → fallback to standby or hard reset")
                         consecutivePlaybackErrors = 0
                         runOnUiThread { recreateMediaPlayer() }
                     }
@@ -309,9 +308,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         } else {
                             consecutiveNetworkFailures++
-                            if (currentState != State.STANDBY) {
-                                updateState(State.STANDBY, null)
-                            }
+                            Log.w("MainActivity", "Bridge returned non-success code, keeping current playback state alive.")
                         }
                     }
                 } catch (e: Exception) {
@@ -339,25 +336,35 @@ class MainActivity : AppCompatActivity() {
                 url
             }
 
-            val stateChanged = newState != currentState
-            val urlChanged = targetUrl != currentStreamUrl
+            // If the incoming URL is invalid/empty, force fallback to the last valid standby
+            val finalUrl = if (url.isNullOrBlank() && newState != State.STANDBY) {
+                Log.w("MainActivity", "Received invalid/empty URL. Forcing fallback to last valid standby: $lastValidStandbyUrl")
+                lastValidStandbyUrl ?: currentStreamUrl
+            } else {
+                targetUrl
+            }
 
-            currentState = newState
-            currentStreamUrl = targetUrl
+            val finalState = if (url.isNullOrBlank() && newState != State.STANDBY) State.STANDBY else newState
+
+            val stateChanged = finalState != currentState
+            val urlChanged = finalUrl != currentStreamUrl
+
+            currentState = finalState
+            currentStreamUrl = finalUrl
             consecutivePlaybackErrors = 0
 
-            Log.i("MainActivity", "State applied → $newState | url=$targetUrl")
+            Log.i("MainActivity", "State applied → $currentState | url=$currentStreamUrl")
 
             fleetServiceIntent?.let {
                 it.putExtra("STATE", currentState.name)
-                it.putExtra("STREAM_URL", targetUrl)
+                it.putExtra("STREAM_URL", finalUrl)
                 startService(it)
             }
 
-            if (targetUrl.isNullOrBlank()) {
+            if (finalUrl.isNullOrBlank()) {
                 stopStream()
             } else if (stateChanged || urlChanged) {
-                playStream(targetUrl, isRecovery = false)
+                playStream(finalUrl, isRecovery = false)
             }
         }
     }
@@ -413,7 +420,6 @@ class MainActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     startMediaInternal(url, isRecovery)
                     
-                    // Fade out black overlay to reveal the new video smoothly
                     overlay.animate()
                         .alpha(0f)
                         .setDuration(1500)
@@ -423,7 +429,6 @@ class MainActivity : AppCompatActivity() {
                         }
                         .start()
 
-                    // Ramp audio up smoothly
                     fadeVolumeIn(from = 0, to = targetVolume, durationMs = 1500)
                 }
             }
@@ -456,15 +461,12 @@ class MainActivity : AppCompatActivity() {
             } else {
                 initExoPlayer()
                 runOnUiThread {
-                    // Hide the black overlay and VLC layout to ensure video renders on top
                     blackOverlay?.visibility = View.GONE
                     vlcVideoLayout.visibility = View.GONE
                     
                     exoPlayerView.visibility = View.VISIBLE
                     exoPlayerView.bringToFront()
                     exoPlayerView.player = exoPlayer
-                    
-                    // Disable and hide all built-in playback controllers (buttons, seekbar, etc.)
                     exoPlayerView.useController = false
 
                     exoPlayer?.let { player ->
@@ -510,7 +512,16 @@ class MainActivity : AppCompatActivity() {
 
                         val url = currentStreamUrl
                         if (url != null) {
-                            if (useVlcFor(url)) {
+                            // If errors exhausted or URL is invalid, fall back to last valid standby URL
+                            val targetPlaybackUrl = if (!lastValidStandbyUrl.isNullOrBlank()) {
+                                Log.w("MainActivity", "Stream failed/invalid. Falling back to last good standby URL: $lastValidStandbyUrl")
+                                currentState = State.STANDBY
+                                lastValidStandbyUrl!!
+                            } else {
+                                url
+                            }
+
+                            if (useVlcFor(targetPlaybackUrl)) {
                                 try {
                                     mediaPlayer.stop()
                                     mediaPlayer.media?.release()
@@ -534,9 +545,9 @@ class MainActivity : AppCompatActivity() {
                                 }
                                 initExoPlayer()
                             }
-                        }
 
-                        currentStreamUrl?.let { playStream(it, isRecovery = true) }
+                            playStream(targetPlaybackUrl, isRecovery = true)
+                        }
                     } catch (e: Exception) {
                         Log.e("MainActivity", "Hard player reset failed", e)
                         isTransitioning.set(false)
