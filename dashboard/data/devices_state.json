@@ -1,0 +1,32 @@
+{
+  "1afff7603b1e02a9": {
+    "deviceId": "1afff7603b1e02a9",
+    "nodeName": "Google TV Streamer",
+    "nodeIp": "100.x.x.x",
+    "status": "ONLINE",
+    "streamUrl": "https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8",
+    "bitrate": 2.8,
+    "temp": 2,
+    "cpu": 12,
+    "lastSeen": 1787379638162,
+    "online": true,
+    "receivedAt": "3:20:38 PM",
+    "appState": "STANDBY",
+    "powerState": "AC",
+    "activePlayer": "PLAYER_A",
+    "playerViewType": "SurfaceView",
+    "troubleshootActive": false,
+    "versionCode": 1,
+    "lastSeenMs": 1787379638016,
+    "usbAttached": false,
+    "usbDebounceCountdown": null,
+    "watchdogStep": null,
+    "targetStreamUri": "https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8",
+    "streamId": "venue_stream_1afff7603b1e02a9",
+    "isDormant": false,
+    "isDecommissioned": false,
+    "isOverridden": false,
+    "accessKeyRevoked": false,
+    "droppedFrames": 0
+  }
+}

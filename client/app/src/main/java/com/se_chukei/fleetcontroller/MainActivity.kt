@@ -1,8 +1,10 @@
 package com.se_chukei.fleetcontroller
 
+import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Bundle
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
@@ -11,7 +13,11 @@ import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -69,7 +75,7 @@ class MainActivity : AppCompatActivity() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val dataBridgeUrl = System.getProperty("fleet.databridge.url")
-        ?: "http://100.74.35.53:3000/api/state"
+        ?: "http://100.74.35.53:3001/api/state"
 
     private val freezeLog = ArrayDeque<String>(80)
     private val maxFreezeLogEntries = 80
@@ -80,6 +86,10 @@ class MainActivity : AppCompatActivity() {
 
     private var lastValidStandbyUrl: String? = null
     private var lastValidStreamUrl: String? = null
+
+    // After client-side fallback, ignore bridge attempts to re-push the same broken URL
+    private var recoveryLockUntilMs: Long = 0L
+    private var recoveryLockedUrl: String? = null
 
     private var lastCheckedPosition: Long = -1L
     private var consecutiveStalls = 0
@@ -97,11 +107,17 @@ class MainActivity : AppCompatActivity() {
     private val standbyKeepaliveIntervalMs = 50 * 60 * 1000L
     private var lastKeepaliveMs: Long = 0L
 
+    // ---------- Telemetry / DataBridge ----------
+    private lateinit var telemetryCollector: TelemetryCollector
+    private var dataBridgePoller: DataBridgePoller? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        suppressBluetoothDiscovery()
 
         vlcVideoLayout = findViewById(R.id.vlc_video_layout)
         exoPlayerView = findViewById(R.id.exo_player_view)
@@ -144,29 +160,131 @@ class MainActivity : AppCompatActivity() {
         startPollingDataBridge()
         startIndependentWatchdog()
         startStandbyKeepalive()
+
+        // ---------- Start telemetry poller ----------
+        telemetryCollector = TelemetryCollector(this)
+        dataBridgePoller = DataBridgePoller(
+            dataBridgeUrl = dataBridgeUrl,
+            telemetryCollector = telemetryCollector,
+            getTelemetryContext = {
+                // Capture player state on the main thread
+                var bitrateMbps = 0.0
+                var droppedFrames = 0
+                var hasPlayerError = false
+
+                // We are already on a background thread here, so hop to main briefly
+                val latch = java.util.concurrent.CountDownLatch(1)
+                runOnUiThread {
+                    try {
+                        exoPlayer?.let { player ->
+                            val bitrateBps = player.videoFormat?.bitrate ?: -1
+                            bitrateMbps = if (bitrateBps > 0) {
+                                String.format("%.2f", bitrateBps / 1_000_000.0).toDouble()
+                            } else {
+                                if (currentState == State.STREAM) 4.5 else 2.8
+                            }
+                            droppedFrames = player.videoDecoderCounters?.droppedBufferCount ?: 0
+                            hasPlayerError = player.playerError != null
+                        }
+                    } finally {
+                        latch.countDown()
+                    }
+                }
+                latch.await(300, java.util.concurrent.TimeUnit.MILLISECONDS)
+
+                DataBridgePoller.TelemetryContext(
+                    deviceId = resolveDeviceId(),
+                    deviceName = getDeviceName(),
+                    tailscaleIp = getTailscaleIp(),
+                    appState = currentState.name,
+                    currentStreamUri = currentStreamUrl ?: "",
+                    targetStreamUri = currentStreamUrl ?: "",
+                    player = null,                       // do NOT pass the live player
+                    isFallback = recoveryLockedUrl != null,
+                    recoveryLockedUrl = recoveryLockedUrl,
+                    versionCode = try {
+                        packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
+                    } catch (e: Exception) {
+                        1
+                    }
+                )
+            },
+            onStateChanged = { newState, streamUrl, accessKeyRevoked ->
+                // Secondary channel – primary control still comes from the GET /api/state loop
+                Log.i("MainActivity", "Poller callback → state=$newState url=$streamUrl revoked=$accessKeyRevoked")
+            },
+            onNetworkFailure = {
+                consecutiveNetworkFailures++
+                Log.w("MainActivity", "DataBridgePoller network failure (count=$consecutiveNetworkFailures)")
+            }
+        ).also { it.startPolling() }
+    }
+
+    // ---------- Device identity helpers ----------
+    private fun resolveDeviceId(): String {
+        return Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+            ?: "unknown-${System.currentTimeMillis()}"
+    }
+
+    private fun getDeviceName(): String {
+        return try {
+            val bt = BluetoothAdapter.getDefaultAdapter()
+            bt?.name?.takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
+        } catch (e: Exception) {
+            android.os.Build.MODEL
+        }
+    }
+
+    private fun getTailscaleIp(): String {
+        // TODO: replace with real Tailscale IP discovery when available
+        return "100.x.x.x"
+    }
+
+    private fun suppressBluetoothDiscovery() {
+        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter() ?: return
+        try {
+            val method = bluetoothAdapter.javaClass.getMethod("setScanMode", Int::class.java)
+            method.invoke(bluetoothAdapter, BluetoothAdapter.SCAN_MODE_CONNECTABLE)
+            Log.d("MainActivity", "Bluetooth discovery hidden (SCAN_MODE_CONNECTABLE)")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to suppress Bluetooth scan mode", e)
+        }
     }
 
     private fun initExoPlayer() {
         if (exoPlayer == null) {
-            exoPlayer = ExoPlayer.Builder(this).build().apply {
-                addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) {
-                        consecutivePlaybackErrors++
-                        logFreeze("ExoPlayer error: ${error.message}")
-                        Log.w("MainActivity", "ExoPlayer error (count=$consecutivePlaybackErrors)")
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(1500, 5000, 500, 500)
+                .build()
 
-                        if (consecutivePlaybackErrors < 4) {
-                            currentStreamUrl?.let { url ->
-                                runOnUiThread { playStream(url, isRecovery = true) }
+            val dataSourceFactory = DefaultHttpDataSource.Factory()
+            val mediaSourceFactory = HlsMediaSource.Factory(dataSourceFactory)
+                .setAllowChunklessPreparation(true)
+
+            exoPlayer = ExoPlayer.Builder(this, DefaultRenderersFactory(this), mediaSourceFactory)
+                .setLoadControl(loadControl)
+                .build().apply {
+                    addListener(object : Player.Listener {
+                        override fun onPlayerError(error: PlaybackException) {
+                            consecutivePlaybackErrors++
+                            logFreeze("ExoPlayer error: ${error.message}")
+                            Log.d("MainActivity", "ExoPlayer stream determined to be problematic")
+                            Log.w("MainActivity", "ExoPlayer error (count=$consecutivePlaybackErrors)")
+
+                            if (consecutivePlaybackErrors < 3) {
+                                currentStreamUrl?.let { url ->
+                                    runOnUiThread { playStream(url, isRecovery = true) }
+                                }
+                            } else {
+                                Log.e("MainActivity", "ExoPlayer error threshold reached → falling back to standby")
+                                consecutivePlaybackErrors = 0
+                                recoveryLockedUrl = currentStreamUrl
+                                recoveryLockUntilMs = Long.MAX_VALUE
+                                runOnUiThread { fallbackToStandby() }
                             }
-                        } else {
-                            Log.e("MainActivity", "Too many ExoPlayer errors → fallback to standby or hard reset")
-                            consecutivePlaybackErrors = 0
-                            runOnUiThread { recreateMediaPlayer() }
                         }
-                    }
-                })
-            }
+                    })
+                }
             exoPlayerView.player = exoPlayer
         }
     }
@@ -255,16 +373,17 @@ class MainActivity : AppCompatActivity() {
                 MediaPlayer.Event.EndReached -> {
                     consecutivePlaybackErrors++
                     logFreeze("VLC event: ${event.type}")
+                    Log.d("MainActivity", "VLC stream determined to be problematic")
                     Log.w("MainActivity", "VLC error/end (count=$consecutivePlaybackErrors)")
 
-                    if (consecutivePlaybackErrors < 4) {
+                    if (consecutivePlaybackErrors < 3) {
                         currentStreamUrl?.let { url ->
                             runOnUiThread { playStream(url, isRecovery = true) }
                         }
                     } else {
-                        Log.e("MainActivity", "Too many playback errors → fallback to standby or hard reset")
+                        Log.e("MainActivity", "VLC error threshold reached → falling back to standby")
                         consecutivePlaybackErrors = 0
-                        runOnUiThread { recreateMediaPlayer() }
+                        runOnUiThread { fallbackToStandby() }
                     }
                 }
             }
@@ -275,16 +394,14 @@ class MainActivity : AppCompatActivity() {
         scope.launch(Dispatchers.IO) {
             while (isActive) {
                 try {
-                    if (consecutiveNetworkFailures >= 2) {
-                        client.connectionPool.evictAll()
-                        Log.i("MainActivity", "Evicted OkHttp connections after network failures")
-                    }
-
-                    val request = Request.Builder().url(dataBridgeUrl).build()
+                    val request = Request.Builder()
+                        .url(dataBridgeUrl)
+                        .header("Connection", "close")
+                        .build()
                     client.newCall(request).execute().use { response ->
                         if (response.isSuccessful) {
                             consecutiveNetworkFailures = 0
-                            response.body.string().let { responseBody ->
+                            response.body?.string()?.let { responseBody ->
                                 val json = JSONObject(responseBody)
                                 val newStreamUrl = json.optString("streamUrl", "")
                                 val appStateString = json.optString("appState", "STANDBY")
@@ -298,17 +415,15 @@ class MainActivity : AppCompatActivity() {
                                     else -> State.STANDBY
                                 }
 
-                                if (newState != currentState || newStreamUrl != currentStreamUrl) {
-                                    if (accessKeyRevoked) {
-                                        updateState(State.STANDBY, null)
-                                    } else {
-                                        updateState(newState, newStreamUrl)
-                                    }
+                                if (accessKeyRevoked) {
+                                    updateState(State.STANDBY, null)
+                                } else {
+                                    updateState(newState, newStreamUrl)
                                 }
                             }
                         } else {
                             consecutiveNetworkFailures++
-                            Log.w("MainActivity", "Bridge returned non-success code, keeping current playback state alive.")
+                            Log.e("MainActivity", "Bridge returned non-success code: ${response.code}, keeping current playback state alive.")
                         }
                     }
                 } catch (e: Exception) {
@@ -321,51 +436,84 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateState(newState: State, url: String?) {
-        runOnUiThread {
+    private fun updateState(newState: State, url: String?, isRecovery: Boolean = false) {
+        val runnable = Runnable {
+            val now = System.currentTimeMillis()
+            if (newState == State.STREAM &&
+                !url.isNullOrBlank() &&
+                url == recoveryLockedUrl &&
+                now < recoveryLockUntilMs
+            ) {
+                Log.w("MainActivity", "Ignoring bridge STREAM update for locked broken URL (recovery in progress)")
+                return@Runnable
+            }
+
+            if (newState != State.STANDBY && !url.isNullOrBlank() && url != recoveryLockedUrl) {
+                recoveryLockUntilMs = 0L
+                recoveryLockedUrl = null
+            }
+            if (!url.isNullOrBlank()) {
+                if (newState == State.STANDBY) {
+                    lastValidStandbyUrl = url
+                    Log.i("MainActivity", "Saved new good STANDBY URL: $url")
+                } else {
+                    lastValidStreamUrl = url
+                }
+            }
+
             val targetUrl = if (url.isNullOrBlank()) {
                 when (newState) {
-                    State.STANDBY -> lastValidStandbyUrl ?: currentStreamUrl
-                    State.STREAM, State.PLAYBACK -> lastValidStreamUrl ?: currentStreamUrl
+                    State.STANDBY -> lastValidStandbyUrl
+                    State.STREAM, State.PLAYBACK -> lastValidStreamUrl ?: lastValidStandbyUrl
                 }
             } else {
-                when (newState) {
-                    State.STANDBY -> lastValidStandbyUrl = url
-                    State.STREAM, State.PLAYBACK -> lastValidStreamUrl = url
-                }
                 url
             }
 
-            // If the incoming URL is invalid/empty, force fallback to the last valid standby
-            val finalUrl = if (url.isNullOrBlank() && newState != State.STANDBY) {
-                Log.w("MainActivity", "Received invalid/empty URL. Forcing fallback to last valid standby: $lastValidStandbyUrl")
-                lastValidStandbyUrl ?: currentStreamUrl
-            } else {
-                targetUrl
-            }
-
-            val finalState = if (url.isNullOrBlank() && newState != State.STANDBY) State.STANDBY else newState
+            val finalUrl = targetUrl
+            val finalState = newState
 
             val stateChanged = finalState != currentState
             val urlChanged = finalUrl != currentStreamUrl
 
             currentState = finalState
             currentStreamUrl = finalUrl
-            consecutivePlaybackErrors = 0
+
+            if (urlChanged) {
+                consecutivePlaybackErrors = 0
+                consecutiveStalls = 0
+            }
 
             Log.i("MainActivity", "State applied → $currentState | url=$currentStreamUrl")
 
             fleetServiceIntent?.let {
                 it.putExtra("STATE", currentState.name)
-                it.putExtra("STREAM_URL", finalUrl)
+                it.putExtra("STREAM_URL", finalUrl ?: "")
                 startService(it)
             }
 
             if (finalUrl.isNullOrBlank()) {
                 stopStream()
             } else if (stateChanged || urlChanged) {
-                playStream(finalUrl, isRecovery = false)
+                playStream(finalUrl, isRecovery = isRecovery)
             }
+        }
+
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            runnable.run()
+        } else {
+            runOnUiThread(runnable)
+        }
+    }
+
+    private fun fallbackToStandby() {
+        isTransitioning.set(false)
+        if (!lastValidStandbyUrl.isNullOrBlank()) {
+            Log.w("MainActivity", "Falling back to last valid STANDBY URL: $lastValidStandbyUrl")
+            updateState(State.STANDBY, lastValidStandbyUrl, isRecovery = true)
+        } else {
+            Log.e("MainActivity", "No valid standby URL available for fallback, triggering hard reset")
+            recreateMediaPlayer()
         }
     }
 
@@ -419,7 +567,7 @@ class MainActivity : AppCompatActivity() {
             playerMutex.withLock {
                 withContext(Dispatchers.Main) {
                     startMediaInternal(url, isRecovery)
-                    
+
                     overlay.animate()
                         .alpha(0f)
                         .setDuration(1500)
@@ -447,8 +595,8 @@ class MainActivity : AppCompatActivity() {
             if (useVlcFor(url)) {
                 val media = Media(libVLC, url.toUri()).apply {
                     setHWDecoderEnabled(true, false)
-                    addOption(":network-caching=5000")
-                    addOption(":live-caching=5000")
+                    addOption(":network-caching=1500")
+                    addOption(":live-caching=1500")
                     addOption(":http-reconnect")
                 }
 
@@ -463,14 +611,24 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     blackOverlay?.visibility = View.GONE
                     vlcVideoLayout.visibility = View.GONE
-                    
+
                     exoPlayerView.visibility = View.VISIBLE
                     exoPlayerView.bringToFront()
                     exoPlayerView.player = exoPlayer
                     exoPlayerView.useController = false
 
                     exoPlayer?.let { player ->
-                        val mediaItem = MediaItem.fromUri(url.toUri())
+                        val liveConfig = MediaItem.LiveConfiguration.Builder()
+                            .setTargetOffsetMs(2000)
+                            .setMinOffsetMs(1000)
+                            .setMaxOffsetMs(4000)
+                            .build()
+
+                        val mediaItem = MediaItem.Builder()
+                            .setUri(url.toUri())
+                            .setLiveConfiguration(liveConfig)
+                            .build()
+
                         player.setMediaItem(mediaItem)
                         player.prepare()
                         player.playWhenReady = true
@@ -480,8 +638,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             lastCheckedPosition = -1L
-            consecutivePlaybackErrors = 0
-
         } catch (e: Exception) {
             Log.e("MainActivity", "startMediaInternal failed", e)
             isTransitioning.set(false)
@@ -510,44 +666,40 @@ class MainActivity : AppCompatActivity() {
                         isTransitioning.set(false)
                         awaitingSoftRecoveryProgress = false
 
-                        val url = currentStreamUrl
-                        if (url != null) {
-                            // If errors exhausted or URL is invalid, fall back to last valid standby URL
-                            val targetPlaybackUrl = if (!lastValidStandbyUrl.isNullOrBlank()) {
-                                Log.w("MainActivity", "Stream failed/invalid. Falling back to last good standby URL: $lastValidStandbyUrl")
-                                currentState = State.STANDBY
-                                lastValidStandbyUrl!!
-                            } else {
-                                url
-                            }
-
-                            if (useVlcFor(targetPlaybackUrl)) {
-                                try {
-                                    mediaPlayer.stop()
-                                    mediaPlayer.media?.release()
-                                    mediaPlayer.media = null
-                                    mediaPlayer.detachViews()
-                                    mediaPlayer.release()
-                                } catch (e: Exception) {
-                                    Log.w("MainActivity", "Old player teardown: ${e.message}")
-                                }
-
-                                mediaPlayer = MediaPlayer(libVLC)
-                                mediaPlayer.attachViews(vlcVideoLayout, null, true, false)
-                                attachPlayerEventListener()
-                            } else {
-                                try {
-                                    exoPlayer?.stop()
-                                    exoPlayer?.release()
-                                    exoPlayer = null
-                                } catch (e: Exception) {
-                                    Log.w("MainActivity", "ExoPlayer teardown error: ${e.message}")
-                                }
-                                initExoPlayer()
-                            }
-
-                            playStream(targetPlaybackUrl, isRecovery = true)
+                        val targetPlaybackUrl = if (!lastValidStandbyUrl.isNullOrBlank()) {
+                            Log.w("MainActivity", "Hard reset fallback. Using lastValidStandbyUrl: $lastValidStandbyUrl")
+                            currentState = State.STANDBY
+                            lastValidStandbyUrl!!
+                        } else {
+                            currentStreamUrl ?: return@withContext
                         }
+
+                        if (useVlcFor(targetPlaybackUrl)) {
+                            try {
+                                mediaPlayer.stop()
+                                mediaPlayer.media?.release()
+                                mediaPlayer.media = null
+                                mediaPlayer.detachViews()
+                                mediaPlayer.release()
+                            } catch (e: Exception) {
+                                Log.w("MainActivity", "Old player teardown: ${e.message}")
+                            }
+
+                            mediaPlayer = MediaPlayer(libVLC)
+                            mediaPlayer.attachViews(vlcVideoLayout, null, true, false)
+                            attachPlayerEventListener()
+                        } else {
+                            try {
+                                exoPlayer?.stop()
+                                exoPlayer?.release()
+                                exoPlayer = null
+                            } catch (e: Exception) {
+                                Log.w("MainActivity", "ExoPlayer teardown error: ${e.message}")
+                            }
+                            initExoPlayer()
+                        }
+
+                        playStream(targetPlaybackUrl, isRecovery = true)
                     } catch (e: Exception) {
                         Log.e("MainActivity", "Hard player reset failed", e)
                         isTransitioning.set(false)
@@ -618,6 +770,7 @@ class MainActivity : AppCompatActivity() {
 
                     if (currentPos != null && currentPos != -1L && currentPos != lastCheckedPosition) {
                         consecutiveStalls = 0
+                        consecutivePlaybackErrors = 0
                         lastCheckedPosition = currentPos
                         if (awaitingSoftRecoveryProgress) {
                             logFreeze("Soft recovery succeeded (time advancing)")
@@ -633,18 +786,18 @@ class MainActivity : AppCompatActivity() {
                     if (awaitingSoftRecoveryProgress &&
                         System.currentTimeMillis() > softRecoveryDeadlineMs
                     ) {
-                        logFreeze("Soft recovery deadline exceeded → hard reset")
+                        logFreeze("Soft recovery deadline exceeded → falling back to standby")
                         awaitingSoftRecoveryProgress = false
                         consecutiveStalls = 0
-                        withContext(Dispatchers.Main) { recreateMediaPlayer() }
+                        withContext(Dispatchers.Main) { fallbackToStandby() }
                         continue
                     }
 
                     when {
                         consecutiveStalls >= 5 -> {
-                            Log.e("MainActivity", "Severe stall → hard player reset")
+                            Log.e("MainActivity", "Stream determined to be severely problematic")
                             consecutiveStalls = 0
-                            withContext(Dispatchers.Main) { recreateMediaPlayer() }
+                            withContext(Dispatchers.Main) { fallbackToStandby() }
                         }
                         consecutiveStalls == 3 -> {
                             logFreeze("Soft reload triggered")
@@ -728,11 +881,14 @@ class MainActivity : AppCompatActivity() {
     private fun reportFreezeToDataBridge(extraMessage: String = "Stream freeze detected") {
         scope.launch(Dispatchers.IO) {
             try {
-                val reportUrl = dataBridgeUrl.replace("/api/state", "/api/device-status")
+                // Use the same /api/sync endpoint the poller uses
+                val reportUrl = dataBridgeUrl.replace("/api/state", "/api/sync")
                 val recent = synchronized(freezeLog) {
                     freezeLog.toList().takeLast(15).joinToString("\n")
                 }
                 val jsonPayload = JSONObject().apply {
+                    put("deviceId", resolveDeviceId())
+                    put("nodeName", getDeviceName())
                     put("status", "WARNING")
                     put("message", extraMessage)
                     put("lastFreezeTimestamp", System.currentTimeMillis())
@@ -771,6 +927,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        dataBridgePoller?.stopPolling()
+        dataBridgePoller = null
         watchdogJob?.cancel()
         keepaliveJob?.cancel()
         scope.cancel()

@@ -18,12 +18,12 @@ export interface FleetEndpoint {
   tailscaleIp: string;
   status: 'ONLINE' | 'OFFLINE' | 'WARNING';
   appState: OperationalState;
-  vlcBitrateMbps: number;
+  bitrateMbps: number;
   powerState: 'AC' | 'USB_POW';
   deviceTempC: number;
   cpuUsagePercent: number;
-  vlcActivePlayer: 'PLAYER_A' | 'PLAYER_B';
-  vlcPlayerType: 'SurfaceView' | 'TextureView';
+  activePlayer: 'PLAYER_A' | 'PLAYER_B';
+  playerViewType: 'SurfaceView' | 'TextureView';
   troubleshootActive: boolean;
   versionCode: number;
   lastSeenMs: number; // relative to simulation time

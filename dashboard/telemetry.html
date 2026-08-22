@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Fleetstream Bridge</title>
+    <style>
+        body { font-family: sans-serif; background: #0b0f19; color: #94a3b8; margin: 0; padding: 20px; font-size: 13px; }
+        h1 { color: #f8fafc; font-size: 1.2rem; margin-bottom: 2px; }
+        .subtitle { color: #64748b; font-size: 0.8rem; margin-top: 0; margin-bottom: 20px; }
+        .card { background: #111827; padding: 15px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #1f2937; }
+        h3 { color: #e2e8f0; font-size: 0.95rem; margin-top: 0; margin-bottom: 10px; }
+        label { display: block; margin-top: 8px; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; }
+        .input-take-group { display: flex; gap: 8px; margin-top: 4px; align-items: center; }
+        input[type="text"] { flex: 1; padding: 6px 10px; background: #1f2937; border: 1px solid #374151; color: #f8fafc; border-radius: 4px; box-sizing: border-box; font-size: 12px; }
+        .btn-take { background: #374151; color: #f8fafc; border: 1px solid #4b5563; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; white-space: nowrap; }
+        .btn-take:hover { background: #4b5563; }
+        .btn-group { margin-top: 12px; display: flex; gap: 8px; }
+        button { padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; }
+        .btn-stream { background: #dc2626; color: white; flex: 1; }
+        .btn-standby { background: #16a34a; color: white; flex: 1; }
+        button:hover { opacity: 0.9; }
+        
+        .device-row { background: #1f2937; padding: 10px 14px; border-radius: 6px; border: 1px solid #374151; display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 8px; font-size: 12px; }
+        .device-info { display: flex; align-items: center; gap: 10px; min-width: 180px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .dot-online { background: #16a34a; }
+        .dot-offline { background: #64748b; }
+        .device-name { color: #f8fafc; font-weight: bold; }
+        .device-ip { color: #64748b; font-size: 0.75rem; }
+        .metrics-inline { display: flex; gap: 20px; align-items: center; color: #cbd5e1; }
+        .metric-item span { color: #f8fafc; font-weight: bold; }
+        .empty-fleet { color: #64748b; font-style: italic; padding: 10px; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <h1>FLEETSTREAM BRIDGE</h1>
+    <p class="subtitle">Streaming Redundancy & Remote Control Fleet Core Dashboard</p>
+
+    <!-- 1. Endpoint Fleet Status Monitor -->
+    <div class="card">
+        <h3>Fleet Status Monitor (<span id="device-count">0</span> Devices)</h3>
+        <div id="device-container">
+            <div class="empty-fleet" id="empty-fleet-msg">Waiting for endpoint devices to check in...</div>
+        </div>
+    </div>
+
+    <!-- 2. Stream Configuration & Mode Controls -->
+    <div class="card">
+        <h3>Stream Configuration & Controls</h3>
+        
+        <label for="activeUrlInput">Active Stream URL</label>
+        <div class="input-take-group">
+            <button class="btn-take" onclick="takeStream('activeUrlInput', 'STREAM')">TAKE</button>
+            <input type="text" id="activeUrlInput" list="activeHistory" placeholder="Enter or select active stream URL...">
+            <datalist id="activeHistory"></datalist>
+        </div>
+
+        <label for="standbyUrlInput">Standby Stream URL</label>
+        <div class="input-take-group">
+            <button class="btn-take" onclick="takeStream('standbyUrlInput', 'STANDBY')">TAKE</button>
+            <input type="text" id="standbyUrlInput" list="standbyHistory" placeholder="Enter or select standby stream URL...">
+            <datalist id="standbyHistory"></datalist>
+        </div>
+
+        <div class="btn-group" style="margin-top: 15px;">
+            <button class="btn-stream" onclick="switchMode('STREAM')">Switch Fleet to STREAM</button>
+            <button class="btn-standby" onclick="switchMode('STANDBY')">Switch Fleet to STANDBY</button>
+        </div>
+    </div>
+
+    <script>
+        const evtSource = new EventSource('/api/events');
+        const historySet = { active: new Set(), standby: new Set() };
+        const trackedDevices = new Map();
+
+        evtSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'initial_sync') {
+                    if (data.globalState) {
+                        updateGlobalStateUI(data.globalState);
+                    }
+                    if (data.devices) {
+                        Object.values(data.devices).forEach(dev => upsertDeviceUI(dev));
+                    }
+                } else if (data.type === 'device_update') {
+                    upsertDeviceUI(data.device || data);
+                } else if (data.type === 'state_change') {
+                    updateGlobalStateUI(data);
+                }
+            } catch (e) {
+                console.error('[SSE] Failed to parse incoming event data:', e);
+            }
+        };
+
+        evtSource.onerror = function(err) {
+            console.error('[SSE] EventSource connection lost:', err);
+        };
+
+        function updateGlobalStateUI(state) {
+            if (state.activeStreamUrl) {
+                document.getElementById('activeUrlInput').value = state.activeStreamUrl;
+                addHistory('active', state.activeStreamUrl);
+            }
+            if (state.standbyStreamUrl) {
+                document.getElementById('standbyUrlInput').value = state.standbyStreamUrl;
+                addHistory('standby', state.standbyStreamUrl);
+            }
+        }
+
+        function upsertDeviceUI(dev) {
+            if (!dev || !dev.deviceId) return;
+            trackedDevices.set(dev.deviceId, dev);
+
+            const container = document.getElementById('device-container');
+            const emptyMsg = document.getElementById('empty-fleet-msg');
+            if (emptyMsg) emptyMsg.remove();
+
+            let row = document.getElementById(`device-row-${dev.deviceId}`);
+            if (!row) {
+                row = document.createElement('div');
+                row.className = 'device-row';
+                row.id = `device-row-${dev.deviceId}`;
+                container.appendChild(row);
+            }
+
+            const streamUrl = dev.streamUrl || dev.activeStreamUrl || '';
+            const proto = streamUrl.startsWith('rtmp') ? 'RTMP' : (streamUrl.includes('m3u8') ? 'HLS' : '-');
+
+            row.innerHTML = `
+                <div class="device-info">
+                    <span class="status-dot ${dev.online ? 'dot-online' : 'dot-offline'}" title="Connection Status"></span>
+                    <div>
+                        <div class="device-name">${escapeHtml(dev.nodeName || dev.deviceId)}</div>
+                        <div class="device-ip">${escapeHtml(dev.nodeIp || 'Unknown IP')} (${escapeHtml(dev.deviceId)})</div>
+                    </div>
+                </div>
+                <div class="metrics-inline">
+                    <div class="metric-item">STATUS: <span>${escapeHtml(dev.status || dev.appState || '-')}</span></div>
+                    <div class="metric-item">PROTO: <span>${proto}</span></div>
+                    <div class="metric-item">BITRATE: <span>${dev.bitrate !== undefined ? dev.bitrate : 0} Mbps</span></div>
+                    <div class="metric-item">TEMP: <span>${dev.temp !== undefined ? dev.temp : 0}°C</span></div>
+                    <div class="metric-item">CPU: <span>${dev.cpu !== undefined ? dev.cpu : 0}%</span></div>
+                </div>
+            `;
+
+            document.getElementById('device-count').textContent = trackedDevices.size;
+        }
+
+        function addHistory(type, url) {
+            if (!url) return;
+            const setObj = historySet[type];
+            if (!setObj.has(url)) {
+                setObj.add(url);
+                const datalist = document.getElementById(type === 'active' ? 'activeHistory' : 'standbyHistory');
+                const opt = document.createElement('option');
+                opt.value = url;
+                datalist.appendChild(opt);
+            }
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function takeStream(inputId, targetState) {
+            const urlValue = document.getElementById(inputId).value;
+            addHistory(targetState === 'STREAM' ? 'active' : 'standby', urlValue);
+
+            const payload = { appState: targetState };
+            if (targetState === 'STREAM') {
+                payload.activeStreamUrl = urlValue;
+            } else {
+                payload.standbyStreamUrl = urlValue;
+            }
+
+            fetch('/api/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            .catch(err => {
+                console.error('Failed to execute TAKE:', err);
+                alert('Failed to execute TAKE: ' + err);
+            });
+        }
+
+        function switchMode(targetState) {
+            const activeStreamUrl = document.getElementById('activeUrlInput').value;
+            const standbyStreamUrl = document.getElementById('standbyUrlInput').value;
+
+            fetch('/api/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    appState: targetState, 
+                    activeStreamUrl, 
+                    standbyStreamUrl 
+                })
+            })
+            .catch(err => {
+                console.error('Failed to switch mode:', err);
+                alert('Failed to switch mode: ' + err);
+            });
+        }
+    </script>
+</body>
+</html>
