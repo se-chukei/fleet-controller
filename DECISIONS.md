@@ -420,3 +420,104 @@ Future architectural decisions should be added here when they affect:
 - User experience philosophy.
 - Deployment strategy.
 - Major technology choices.
+
+# ADR-011: Device Naming Model
+
+Date: 2026-08-23  
+Status: Accepted
+
+## Decision
+
+Two distinct names are used:
+
+1. **Main display name** (bold, primary on dashboard)  
+   - Admin-controlled, may contain Japanese characters.  
+   - Temporary value for tech test: `"テスト拠点1"`.  
+   - Must be editable from the dashboard for v1.
+
+2. **Secondary / device name** (shown next to IP)  
+   - Comes from the Android device (Bluetooth name → `Build.MODEL`).
+
+Syncing either name into the Tailscale machine name is explicitly out of scope for the October target and is recorded as future work.
+
+---
+
+# ADR-012: Offline Telemetry Display Rules
+
+Date: 2026-08-23  
+Status: Accepted
+
+## Decision
+
+When a device is offline (`online: false`):
+
+- Status indicator = grey.
+- Displayed status text = `OFFLINE`.
+- All live telemetry values (bitrate, temperature, CPU, power state, uptime, etc.) are hidden or shown as unavailable.
+
+When the device returns to online, normal telemetry is restored.
+
+---
+
+# ADR-013: OTA Update Safety
+
+Date: 2026-08-23  
+Status: Accepted
+
+## Decision
+
+OTA updates must be recoverable. Bricking a device is not an acceptable failure mode.
+
+Required approach:
+
+- Retain previous APK (A/B or equivalent retention).
+- Post-install health window based on successful telebeats and absence of crash loop.
+- Automatic rollback on failure.
+- Staged rollout (1 → small cohort → rest) until the process is stable.
+- OTA controls live in the Admin section of the dashboard.
+
+---
+
+# ADR-014: Client Modularity Approach (October)
+
+Date: 2026-08-23  
+Status: Accepted
+
+## Decision
+
+STREAM, STANDBY and PLAYBACK are implemented as clean internal modules inside a **single APK**.
+
+PLAYBACK remains dormant unless a USB drive is inserted.  
+Runtime or build-time “suite” switching (different feature sets per use case) is deferred.
+
+This supports control-room, head-end and direct-display deployments without multiplying binaries for the October target.
+
+---
+
+# ADR-015: Thermal Protection
+
+Date: 2026-08-23  
+Status: Accepted
+
+## Decision
+
+On sustained high temperature or repeated unrecoverable stalls the device enters a **thermal pause**:
+
+- Decoder / heavy playback activity is stopped.
+- An on-screen warning is displayed stating that the device cannot be used until the temperature drops below the threshold for a sustained period.
+- Telebeat continues so the dashboard retains visibility.
+- Normal operation resumes only after the temperature condition is cleared.
+
+---
+
+# ADR-016: Primary Hardware Target
+
+Date: 2026-08-23  
+Status: Accepted
+
+## Decision
+
+Primary target platform is **Google TV Streamer**.
+
+Support for built-in Android TV (television sets) is Later / Exploratory.  
+USB playback may be limited or omitted on built-in TVs.

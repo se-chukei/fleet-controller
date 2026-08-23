@@ -320,23 +320,26 @@ For 100 devices:
 
 ---
 
-## 9.2 Telebeat Payload
-
-Payload size target:
-
-<500 bytes
+## 9.2 Telemetry Payload (required fields)
 
 Example metrics:
 
 ```json
 {
- "appState":"STREAM",
- "vlcBitrateMbps":4.2,
- "powerState":"ON",
- "deviceTempC":42,
- "cpuUsagePercent":25
+  "deviceId": "...",
+  "nodeName": "Android device name",
+  "nodeIp": "100.x.x.x",
+  "appState": "STANDBY|STREAM|PLAYBACK",
+  "status": "ONLINE|WARNING|...",
+  "bitrate": 4.2,
+  "temp": 42,
+  "cpu": 18,
+  "powerState": "AC|USB_POW|...",
+  "uptimeSeconds": 86400
 }
 ```
+Offline detection: 15 seconds without a successful telebeat.
+Dashboard offline display: grey indicator, status text OFFLINE, metrics hidden.
 
 ---
 
@@ -609,20 +612,8 @@ The active player is never destroyed until replacement playback is ready.
 ---
 
 # 19. OTA Update System
-
-The endpoint uses Android Device Owner capabilities.
-
-Updates are performed using Android PackageInstaller.
-
-Process:
-
-1. Endpoint receives approvedVersionCode.
-2. APK downloads from Data Bridge.
-3. PackageInstaller installs silently.
-4. Application restarts.
-
-No external MDM platform is required.
-
+See ADR-013.
+Rollback capability is mandatory for the October gate.
 ---
 
 # 20. Self Healing System
@@ -694,7 +685,7 @@ After confirmed removal:
 Initial deployment targets Google TV Streamer devices.
 
 The provisioning system must remain compatible with:
-
+(Later / Exploratory)
 - Android TV televisions.
 - Managed Android TV devices.
 
@@ -708,7 +699,13 @@ Provisioning includes:
 
 ---
 
-# 24. Operational Philosophy
+# 24. Thermal Pause
+See SYSTEM_DESIGN.md and ADR-015.
+On-screen warning is required. Telebeat must continue.
+
+---
+
+# 25. Operational Philosophy
 
 FleetController follows these principles:
 

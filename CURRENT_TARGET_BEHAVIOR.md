@@ -108,5 +108,40 @@ The prototype is considered successful only when all of the following are true:
 
 ---
 
-**Last updated:** 2026-08-11  
-**Owner:** Project lead (human)
+## October Success Gate (5–10 devices)
+
+The prototype is considered ready for limited rollout only when all of the following are true on real Google TV Streamer hardware:
+
+- [ ] Zero-touch: power on → auto-starts → full-screen video
+- [ ] STANDBY ↔ STREAM changes visible within one polling cycle
+- [ ] USB PLAYBACK works when media is present; otherwise dormant
+- [ ] Continuous operation for extended periods with self-healing
+- [ ] Device appears correctly on dashboard (green/grey, telemetry, power, uptime)
+- [ ] Offline → grey + OFFLINE + metrics hidden
+- [ ] Thermal pause shows on-screen warning and stops playback activity
+- [ ] Safe OTA with rollback is proven on at least one device
+- [ ] Role separation (配信担当 / Admin) is enforced
+- [ ] Admin can edit main device display name
+- [ ] Real Tailscale IP is reported
+- [ ] Red-dot live indicator works as specified
+
+## Thermal Pause Behaviour
+
+When thermal pause is active:
+
+- Playback / decoding is stopped.
+- A clear on-screen message informs the user that the device is unavailable until temperature returns to a safe range for a sustained period.
+- Telebeat continues.
+- Dashboard shows an appropriate WARNING / thermal state.
+
+## Telemetry Fields (required)
+
+Every uplink must include at minimum:
+
+- deviceId
+- nodeName (Android device name)
+- nodeIp (Tailscale IPv4)
+- appState / status
+- bitrate, temp, cpu
+- powerState
+- uptimeSeconds

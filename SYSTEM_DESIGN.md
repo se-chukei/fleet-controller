@@ -109,6 +109,24 @@ Endpoints do not:
 
 ---
 
+## 2.3 External Triggers (TVU Webhooks)
+
+The primary external trigger for fleet-wide mode changes is the TVU webhook.
+
+Flow:
+
+TVU Broadcaster
+      │
+      │  webhook
+      ▼
+Data Bridge
+      │
+      │  updates global desired state
+      ▼
+Endpoints (via telebeat response)
+
+---
+
 # 3. Telebeat System
 
 ## Purpose
@@ -180,6 +198,27 @@ Example:
 
 ---
 
+## Required Telemetry Fields
+
+Every telebeat / sync payload must include at minimum:
+
+- deviceId
+- nodeName          (Android device name)
+- nodeIp            (Tailscale IPv4)
+- appState / status
+- bitrate, temp, cpu
+- powerState
+- uptimeSeconds
+
+---
+
+## Offline Detection & Display
+
+- No successful telebeat for > 15 seconds → device marked `online: false`
+- Dashboard must show grey indicator, status text `OFFLINE`, and hide live metrics
+
+---
+
 # 4. Endpoint State Engine
 
 The Android Client operates using a finite state machine.
@@ -219,6 +258,10 @@ Feature Registry
 
 Feature Module
 ```
+
+For the October target, STREAM, STANDBY and PLAYBACK are implemented as clean internal modules inside a single APK. 
+PLAYBACK remains dormant unless USB media is present. 
+Runtime or build-time suite switching is deferred.
 
 ---
 
@@ -303,7 +346,7 @@ onStateExit()
 ```
 onStateEnter()
 ```
-
+TVU webhook is the primary external trigger for state changes
 ---
 
 # 8. STANDBY Mode
@@ -358,6 +401,7 @@ Feature Module:
 ```
 UsbMediaStorageModule
 ```
+PLAYBACK is a deliberate user/system choice, not a network-failure fallback.
 
 ---
 
@@ -598,35 +642,17 @@ Android Accessibility Service capabilities.
 
 ---
 
-# 16. OTA Update System
+## 16. OTA Update System
 
-The Android Client uses Device Owner privileges.
+Requirements for the October gate:
 
-Flow:
+- Previous APK is retained (A/B or equivalent)
+- Post-install health window (successful telebeats + no crash loop)
+- Automatic rollback on failure
+- Staged rollout (1 device → small cohort → rest) until the process is stable
+- Controlled from the Admin section of the dashboard
 
-```
-Data Bridge
-
-      |
-
-Approved Version Code
-
-      |
-
-Endpoint Telebeat
-
-      |
-
-APK Download
-
-      |
-
-PackageInstaller
-
-      |
-
-Silent Update
-```
+Bricking a device is not an acceptable failure mode.
 
 ---
 
@@ -651,6 +677,17 @@ Provides:
 
 - Periodic health validation.
 - Service recovery.
+
+---
+
+## Thermal Protection
+
+On sustained high temperature or repeated unrecoverable stalls the device enters thermal pause:
+
+- Playback / decoding is stopped
+- On-screen warning is displayed stating the device cannot be used until temperature returns to a safe range for a sustained period
+- Telebeat continues so the dashboard retains visibility
+- Normal operation resumes only after the temperature condition is cleared
 
 ---
 

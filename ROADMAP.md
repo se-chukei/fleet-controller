@@ -4,7 +4,7 @@
 
 This document defines the implementation roadmap for FleetController.
 
-The roadmap is intended to:
+It is intended to:
 
 - Guide development priorities.
 - Provide AI coding agents with project direction.
@@ -17,39 +17,25 @@ This document should evolve as milestones are completed.
 
 # Project Vision
 
-FleetController will provide a production-grade fleet management platform for Android TV / Google TV endpoints.
+FleetController will provide a production-grade fleet management platform for Android TV / Google TV endpoints (primary target: Google TV Streamer).
 
 The finished system will provide:
 
-- Automated live stream management.
-- Local USB media playback.
-- Remote monitoring.
-- Secure fleet administration.
+- Automated live stream management (STANDBY / STREAM).
+- Local USB media playback (PLAYBACK).
+- Remote monitoring and fleet control.
+- Secure role-based administration.
 - Self-healing endpoint operation.
-- Remote troubleshooting.
-- OTA updates.
+- Safe OTA updates with rollback.
+- Remote troubleshooting (future).
+- Modular client architecture that can later support use-case-specific suites.
 
 ---
 
 # Current Architecture
-
-The system consists of:
-
-```
-/dashboard
-
-Operator Web Interface
-
-
-/data-bridge
-
-Fleet orchestration service
-
-
-/client
-
-Android TV endpoint application
-```
+/dashboard          Operator Web Interface
+/data-bridge        Fleet orchestration service
+/client             Android TV endpoint application (Google TV Streamer primary)
 
 ---
 
@@ -59,42 +45,46 @@ Prioritize:
 
 1. Functional end-to-end workflows.
 2. Stable architecture.
-3. Hardware validation.
-4. Operational reliability.
+3. Hardware validation on real Google TV Streamer devices.
+4. Operational reliability and zero-touch behaviour.
 
 Avoid:
 
 - Premature optimization.
 - Large rewrites.
 - Adding features before core reliability exists.
+- Over-engineering modularity or multi-suite support before the single-APK path is proven.
+
+---
+
+# October Target (Authoritative)
+
+**Goal:** Bulletproof operation on **5–10 devices**, ready for wider rollout.
+
+Success means:
+
+- Zero-touch power-on → full-screen video.
+- Reliable STANDBY ↔ STREAM switching (driven by TVU webhooks + dashboard).
+- USB PLAYBACK works when a drive is inserted; otherwise stays dormant.
+- Safe OTA with automatic rollback on failure / crash-loop.
+- Role separation (配信担当 vs Admin).
+- Historical daily logs.
+- Admin-editable main device names.
+- Real Tailscale IP reported.
+- On-screen red-dot live indicator.
+- Self-healing + thermal protection with on-device warning.
+- Devices appear correctly on dashboard (online/offline, telemetry, power state, uptime).
+
+Built-in Android TV (non-Streamer) support is **Later / Exploratory**.
 
 ---
 
 # Phase 0 — Repository and Documentation Foundation
 
-## Objective
+## Status: Complete
 
-Create a stable development foundation.
-
----
-
-## Tasks
-
-- [x] Establish unified repository structure.
-- [x] Create architecture documentation.
-- [x] Create system design documentation.
-- [x] Create AI development guidelines.
-- [x] Document architectural decisions.
-
----
-
-## Completion Criteria
-
-AI agents can understand:
-
-- System purpose.
-- Component boundaries.
-- Design constraints.
+- Unified repository structure.
+- Architecture, system design, AI guidelines, decisions documents.
 
 ---
 
@@ -102,81 +92,43 @@ AI agents can understand:
 
 ## Objective
 
-Create the central orchestration service.
+Central orchestration service.
 
----
+## Key capabilities
 
-## Tasks
-
-Implement:
-
-- Device registration.
-- Telebeat endpoint.
-- State storage.
-- Configuration storage.
-- Dashboard communication layer.
-
----
-
-## Initial API
-
-Endpoint:
-
-```
-POST /api/telebeat
-```
-
-Purpose:
-
-Receive:
-
-- Device health.
-- Current state.
-
-Return:
-
-- Desired state.
-- Configuration.
-
----
+- Device registration / telebeat (`POST /api/sync` or equivalent).
+- Global state storage and distribution.
+- SSE (or equivalent) to dashboard.
+- Offline detection (15 s threshold).
+- Persistence of device state and global fleet state.
 
 ## Completion Criteria
 
-A test client can:
-
-1. Send heartbeat.
-2. Receive state response.
-3. Change state from dashboard.
+Test client can send telemetry, receive desired state, and appear on dashboard.
 
 ---
 
-# Phase 2 — Dashboard Fleet Control
+# Phase 2 — Dashboard Fleet Control (Tech-test → Production)
 
 ## Objective
 
-Create the operator interface.
+Operator interface usable by 配信担当.
 
----
+## Must-have for October
 
-## Tasks
+- Live device list with online/offline.
+- Status, bitrate, temp, CPU, power state, uptime.
+- When offline: grey dot, status = OFFLINE, metrics hidden.
+- Manual stream / status switching.
+- Automatic stream / status switching triggered by external TVU webhook
+- Admin-editable main display name.
+- Basic role separation (配信担当 vs Admin).
+- Historical log access (daily rotating files).
 
-Implement:
+## Nice-to-have soon
 
-- Device list.
-- Online/offline status.
-- Current state display.
-- Configuration controls.
-- Auto-switch policy management.
-
----
-
-## Completion Criteria
-
-Operator can:
-
-- View connected devices.
-- Change endpoint policies.
-- Observe state changes.
+- Alerting (dashboard + optional external).
+- Staged OTA controls.
 
 ---
 
@@ -184,30 +136,18 @@ Operator can:
 
 ## Objective
 
-Create the endpoint runtime.
+Reliable endpoint runtime on Google TV Streamer.
 
----
+## Must-have for October
 
-## Tasks
-
-Implement:
-
-- Android project structure.
-- Foreground service.
-- Boot startup.
-- Tailscale connectivity.
-- Telebeat communication.
-- Logging foundation.
-
----
-
-## Completion Criteria
-
-Android device:
-
-- Boots automatically.
-- Starts FleetController service.
-- Communicates with Data Bridge.
+- Foreground service (`MEDIA_PLAYBACK`).
+- Boot-completed auto-start.
+- Zero-touch cold start.
+- Telebeat loop (2–5 s with jitter).
+- Real Tailscale IP reporting.
+- Uptime (since process start / last reconnect).
+- Power state reporting.
+- Modular internal structure (STREAM / STANDBY / PLAYBACK modules) but single APK.
 
 ---
 
@@ -215,64 +155,38 @@ Android device:
 
 ## Objective
 
-Implement endpoint decision logic.
+Correct state behaviour and self-healing.
+
+## States
+
+- STANDBY
+- STREAM
+- PLAYBACK (USB; dormant if no media)
+
+## Self-healing rules (October)
+
+| Event                        | Behaviour |
+|-----------------------------|-----------|
+| Network loss                | Keep last playback; continue telebeat retries; on reconnect adopt current fleet state |
+| Bad stream URL              | Fall back to STANDBY / last good URL; keep trying |
+| Process death / crash       | Restart via service + boot receiver; resume last or fleet state |
+| Device reboot               | Zero-touch return to fleet or last known state |
+| Data Bridge unreachable     | Continue last known playback indefinitely |
+| Overheat / repeated stalls  | Progressive recovery → thermal pause (decoder stopped, on-screen warning shown, telebeat stays alive). Resume only after temperature stays below threshold for a sustained period |
+
+On-screen thermal warning must clearly indicate the device cannot be used until temperature recovers.
 
 ---
 
-## Tasks
-
-Implement:
-
-States:
-
-```
-STANDBY
-
-STREAM
-
-PLAYBACK
-```
-
-Implement:
-
-- State transitions.
-- Feature registry.
-- Module lifecycle.
-
----
-
-## Completion Criteria
-
-Endpoint correctly changes behavior based on Data Bridge responses.
-
----
-
-# Phase 5 — VLC Streaming Integration
+# Phase 5 — VLC / ExoPlayer Streaming
 
 ## Objective
 
-Enable network stream playback.
+Stable network playback.
 
----
-
-## Tasks
-
-Implement:
-
-- VLC initialization.
-- RTMP playback.
-- Stream switching.
-- Playback health monitoring.
-
----
-
-## Completion Criteria
-
-Endpoint can:
-
-- Play standby stream.
-- Switch to live stream.
-- Recover from playback failure.
+- STANDBY and STREAM URLs.
+- Watchdog, soft recovery, hard reset with cooldown.
+- Bitrate / stall reporting.
 
 ---
 
@@ -280,243 +194,93 @@ Endpoint can:
 
 ## Objective
 
-Enable local media playback.
-
----
-
-## Tasks
-
-Implement:
+Local media support.
 
 - USB detection.
-- Media scanning.
-- File indexing.
-- Local playback.
-- Disconnect handling.
+- Basic playlist support (Must-have for v1).
+- PLAYBACK module stays dormant when no USB is present (acceptable for October).
 
 ---
 
-## Completion Criteria
-
-User can:
-
-1. Insert USB drive.
-2. Browse media.
-3. Play content.
-4. Return safely to network state.
-
----
-
-# Phase 7 — User Interaction Model
+# Phase 7 — User Interaction & Indicators
 
 ## Objective
 
-Implement local user control.
+Minimal, non-intrusive local UI.
+
+- Discreet red-dot + temporary “Stream is Live” text (lower-left) when live is available but device is not in STREAM.
+- Thermal-pause warning screen.
+- No other prominent overlays in this phase.
 
 ---
 
-## Tasks
-
-Implement:
-
-- Live stream notifications.
-- Red live indicator.
-- Join-stream workflow.
-- Auto-switch policies.
-
----
-
-## Completion Criteria
-
-User experience supports:
-
-Automatic mode:
-
-```
-Live event starts
-
-↓
-
-Endpoint joins stream
-```
-
-Manual mode:
-
-```
-Live event starts
-
-↓
-
-Notification appears
-
-↓
-
-User chooses
-```
-
----
-
-# Phase 8 — Remote Troubleshooting
+# Phase 8 — Safe OTA
 
 ## Objective
 
-Enable remote visual support.
+Recoverable remote updates (Must-have for October).
+
+Best-practice approach:
+
+- Retain previous APK (A/B or equivalent).
+- Post-install health window (successful telebeats + no crash loop).
+- Automatic rollback on failure.
+- Staged rollout (1 device → small cohort → rest) until process is stable.
+- Controlled from Admin section of dashboard.
+
+Bricking a device is **not** an acceptable failure mode.
 
 ---
 
-## Tasks
+# Phase 9 — Remote Troubleshooting (Nice-to-have soon)
 
-Implement:
-
-- Troubleshooting activation.
-- Secondary VLC player.
-- Rendering handoff.
-- Screen monitoring.
-- Remote input.
+- Secondary video path / screen monitoring.
+- Remote assistance without interrupting primary playback.
 
 ---
 
-## Completion Criteria
+# Phase 10 — Reliability Hardening & Fleet Testing
 
-Operator can:
-
-- View endpoint screen.
-- Assist users remotely.
-- Avoid playback interruption.
-
----
-
-# Phase 9 — OTA Update System
-
-## Objective
-
-Enable fleet software updates.
+- 48 h+ continuous operation on real hardware.
+- Network loss / stream loss / power-cycle recovery.
+- 5–10 device soak test (October gate).
+- Later: 30 → 100+ device validation.
 
 ---
 
-## Tasks
+# Feature Priority Summary (October Gate)
 
-Implement:
-
-- Version reporting.
-- APK hosting.
-- Update detection.
-- Silent installation.
-
----
-
-## Completion Criteria
-
-Operator can:
-
-1. Publish new APK.
-2. Approve version.
-3. Update endpoints remotely.
-
----
-
-# Phase 10 — Reliability Hardening
-
-## Objective
-
-Prepare for production deployment.
-
----
-
-## Tasks
-
-Validate:
-
-- 24/7 playback.
-- Network recovery.
-- VLC crash recovery.
-- Power cycling.
-- Device reboot behavior.
-
-Implement:
-
-- Watchdog.
-- RAM logging.
-- Health metrics.
-
----
-
-## Completion Criteria
-
-Endpoint can operate unattended.
-
----
-
-# Phase 11 — Fleet Testing
-
-## Objective
-
-Validate multi-device behavior.
-
----
-
-## Test Targets
-
-Initial:
-
-```
-1 device
-```
-
-Then:
-
-```
-10 devices
-```
-
-Then:
-
-```
-100+ devices
-```
-
----
-
-## Validate:
-
-- Telebeat stability.
-- Network load.
-- Synchronization behavior.
-- Remote management.
-- Recovery scenarios.
+| Item                              | Priority              |
+|-----------------------------------|-----------------------|
+| Core state machine + streaming    | Must                  |
+| USB PLAYBACK (dormant if unused)  | Must                  |
+| Safe OTA + rollback               | Must                  |
+| Role-based access                 | Must                  |
+| Historical daily logs             | Must                  |
+| Admin-editable main names         | Must                  |
+| Real Tailscale IP                 | Must                  |
+| Red-dot live indicator            | Must                  |
+| Thermal pause + on-screen warning | Must                  |
+| External alert output (GPIO/etc.) | Nice-to-have soon     |
+| Built-in Android TV support       | Later / Exploratory   |
+| Runtime module suite switching    | Later                 |
+| Tailscale name sync               | Later                 |
+| Multi-stream routing              | Later                 |
+| Mobile operator app               | Later                 |
 
 ---
 
 # Future Enhancements
 
-Potential future modules:
-
-## Advanced Analytics
-
-- Historical health data.
-- Playback statistics.
-- Failure prediction.
-
----
-
-## Content Scheduling
-
-- Time-based playlists.
-- Regional programming.
-
----
-
-## Multi-Stream Management
-
-- Multiple concurrent live events.
-- Channel routing.
-
----
-
-## Expanded Hardware Support
-
-- Additional Android TV platforms.
-- Dedicated signage hardware.
+- Automated provisioning / kitting.
+- Device groups / tags.
+- Health score for quick triage.
+- Remote log pull.
+- Content scheduling.
+- Advanced analytics.
+- External sounder / GPIO alerts.
+- Tailscale machine-name sync.
+- Build-time or runtime module suites for different use cases.
 
 ---
 
@@ -524,16 +288,10 @@ Potential future modules:
 
 When completing a milestone:
 
-Update:
-
-- Completed tasks.
-- Known limitations.
-- New dependencies.
+- Update completed tasks.
+- Record known limitations.
+- Note new dependencies.
 
 When adding major functionality:
 
-Update:
-
-- TECHNICAL_SPEC.md
-- SYSTEM_DESIGN.md
-- DECISIONS.md
+- Update TECHNICAL_SPEC / SYSTEM_DESIGN / DECISIONS as needed.

@@ -427,24 +427,28 @@ Tailscale Network
 
 # Hardware Platform Abstraction
 
-Initial deployment target:
-
-```
+Primary deployment target:
 Google TV Streamer
-```
 
-Supported design targets:
+Later / Exploratory:
+Android TV televisions (built-in)
+Google TV devices (other form factors)
 
-```
-Android TV televisions
+The architecture must avoid assumptions that only apply to one hardware model, but current implementation priority is the Streamer.
+---
 
-Google TV devices
+# Current Focus (October Gate)
 
-Managed Android TV endpoints
-```
+Goal: bulletproof operation on 5–10 Google TV Streamer devices.
 
-The architecture must avoid assumptions that only apply to one hardware model.
+See `ROADMAP.md` and `CURRENT_TARGET_BEHAVIOR.md` for the definitive list of must-have capabilities, including:
 
+- Safe OTA with automatic rollback
+- Thermal pause with on-screen warning
+- Offline display rules (grey + OFFLINE + hidden metrics)
+- Admin-editable main device names
+- Real Tailscale IP reporting
+- Single-APK modular structure (STREAM / STANDBY / PLAYBACK)
 ---
 
 # Deployment Architecture

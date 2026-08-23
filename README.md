@@ -348,14 +348,28 @@ Defines:
 
 # Current Development Focus
 
-The current priority is:
+October target: **bulletproof operation on 5–10 Google TV Streamer devices**, ready for limited rollout.
 
-1. Establish stable monorepo structure.
-2. Build Android client foundation.
-3. Implement Data Bridge communication.
-4. Validate STREAM/STANDBY behavior.
-5. Implement local user policy handling.
-6. Refine notification workflow.
+Priority order is defined in `ROADMAP.md`.  
+Authoritative runtime behaviour for the current phase is in `CURRENT_TARGET_BEHAVIOR.md`.
+
+Key themes:
+
+- Zero-touch cold start and self-healing
+- Reliable STANDBY ↔ STREAM switching
+- USB PLAYBACK (dormant when unused)
+- Safe OTA with rollback
+- Role separation (配信担当 / Admin)
+- Clear offline and thermal-pause behaviour on the dashboard and device
+
+---
+
+# Status
+
+Project stage: Active prototype / pre-production hardening
+
+Primary hardware target: Google TV Streamer  
+Documentation is maintained at the monorepo root; component-level ROADMAP/SPEC files are deprecated.
 
 ---
 
