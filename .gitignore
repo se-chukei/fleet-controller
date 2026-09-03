@@ -25,6 +25,9 @@
 # --- Fleet Controller Logs ---
 /fleet-controller/logs/
 
+# --- Scripts ---
+/fleet-controller/scripts/
+
 # --- General IDE & OS ---
 .DS_Store
 *.iws

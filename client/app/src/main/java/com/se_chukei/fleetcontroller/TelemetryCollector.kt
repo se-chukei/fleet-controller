@@ -1,11 +1,11 @@
 package com.se_chukei.fleetcontroller
 
 import android.content.Context
-import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbManager
 import android.os.BatteryManager
 import androidx.media3.exoplayer.ExoPlayer
+import java.io.File
 import java.io.RandomAccessFile
 
 data class TelemetryPayload(
@@ -15,6 +15,7 @@ data class TelemetryPayload(
     val status: String,
     val appState: String,
     val bitrateMbps: Double,
+    val streamResolution: String,
     val powerState: String,
     val deviceTempC: Int,
     val cpuUsagePercent: Int,
@@ -33,7 +34,8 @@ data class TelemetryPayload(
     val isDecommissioned: Boolean,
     val isOverridden: Boolean,
     val accessKeyRevoked: Boolean,
-    val droppedFrames: Int
+    val droppedFrames: Int,
+    val uptimeSeconds: Long
 )
 
 class TelemetryCollector(private val context: Context) {
@@ -45,32 +47,53 @@ class TelemetryCollector(private val context: Context) {
         appState: String,
         currentStreamUri: String,
         targetStreamUri: String,
-        player: ExoPlayer?,                         // may be null
+        player: ExoPlayer?,
         isFallback: Boolean,
         recoveryLockedUrl: String?,
         versionCode: Int,
-        // Pre-computed values (preferred – avoids touching player off the main thread)
+        uptimeSeconds: Long,
         precomputedBitrateMbps: Double? = null,
         precomputedDroppedFrames: Int? = null,
-        precomputedHasError: Boolean? = null
+        precomputedHasError: Boolean? = null,
+        precomputedStreamResolution: String? = null
     ): TelemetryPayload {
 
-        val batteryIntent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val batteryIntent = context.registerReceiver(
+            null,
+            IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+        )
         val plugged = batteryIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
-        val powerState = if (plugged == BatteryManager.BATTERY_PLUGGED_AC) "AC" else "USB_POW"
+        val powerState = when (plugged) {
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC"
+            BatteryManager.BATTERY_PLUGGED_USB -> "USB_POW"
+            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "WIRELESS"
+            else -> "UNKNOWN"
+        }
 
+        val thermalTemp = readThermalSensor()
         val tempRaw = batteryIntent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
-        val deviceTempC = if (tempRaw > 0) tempRaw / 10 else 42
+        val batteryTempC = when {
+            tempRaw > 100 -> tempRaw / 10
+            tempRaw > 0 -> tempRaw
+            else -> 0
+        }
+        val deviceTempC = thermalTemp ?: if (batteryTempC > 0) batteryTempC else 42
 
         val usbManager = context.getSystemService(Context.USB_SERVICE) as UsbManager
         val usbAttached = usbManager.deviceList.isNotEmpty()
 
-        // Prefer pre-computed values; fall back to live player only if still provided
         val bitrateMbps = precomputedBitrateMbps
             ?: player?.videoFormat?.bitrate?.let { bps ->
-                if (bps > 0) String.format("%.2f", bps / 1_000_000.0).toDouble() else null
+                if (bps > 0) String.format(java.util.Locale.US, "%.2f", bps / 1_000_000.0).toDouble() else null
             }
             ?: if (appState == "STREAM") 4.5 else 2.8
+
+        val calculatedResolution = precomputedStreamResolution
+            ?: run {
+                val w = player?.videoFormat?.width ?: 0
+                val h = player?.videoFormat?.height ?: 0
+                if (w >= 320 && h >= 240) "${w}x${h}" else "Unknown"
+            }
 
         val droppedFrames = precomputedDroppedFrames
             ?: player?.videoDecoderCounters?.droppedBufferCount
@@ -89,6 +112,7 @@ class TelemetryCollector(private val context: Context) {
             status = status,
             appState = appState,
             bitrateMbps = bitrateMbps,
+            streamResolution = precomputedStreamResolution ?: calculatedResolution,
             powerState = powerState,
             deviceTempC = deviceTempC,
             cpuUsagePercent = readCpuUsage(),
@@ -107,8 +131,27 @@ class TelemetryCollector(private val context: Context) {
             isDecommissioned = false,
             isOverridden = isFallback,
             accessKeyRevoked = false,
-            droppedFrames = droppedFrames
+            droppedFrames = droppedFrames,
+            uptimeSeconds = uptimeSeconds
         )
+    }
+
+    private fun readThermalSensor(): Int? {
+        return try {
+            for (i in 0..5) {
+                val file = File("/sys/class/thermal/thermal_zone$i/temp")
+                if (file.exists()) {
+                    val text = file.readText().trim()
+                    val temp = text.toIntOrNull()
+                    if (temp != null && temp > 0) {
+                        return if (temp > 1000) temp / 1000 else temp
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun readCpuUsage(): Int {

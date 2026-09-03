@@ -1,210 +1,510 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fleetstream Bridge</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fleet Telemetry & Command Center</title>
     <style>
-        body { font-family: sans-serif; background: #0b0f19; color: #94a3b8; margin: 0; padding: 20px; font-size: 13px; }
-        h1 { color: #f8fafc; font-size: 1.2rem; margin-bottom: 2px; }
-        .subtitle { color: #64748b; font-size: 0.8rem; margin-top: 0; margin-bottom: 20px; }
-        .card { background: #111827; padding: 15px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #1f2937; }
-        h3 { color: #e2e8f0; font-size: 0.95rem; margin-top: 0; margin-bottom: 10px; }
-        label { display: block; margin-top: 8px; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; }
-        .input-take-group { display: flex; gap: 8px; margin-top: 4px; align-items: center; }
-        input[type="text"] { flex: 1; padding: 6px 10px; background: #1f2937; border: 1px solid #374151; color: #f8fafc; border-radius: 4px; box-sizing: border-box; font-size: 12px; }
-        .btn-take { background: #374151; color: #f8fafc; border: 1px solid #4b5563; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; white-space: nowrap; }
-        .btn-take:hover { background: #4b5563; }
-        .btn-group { margin-top: 12px; display: flex; gap: 8px; }
-        button { padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; }
-        .btn-stream { background: #dc2626; color: white; flex: 1; }
-        .btn-standby { background: #16a34a; color: white; flex: 1; }
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: #334155;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        h1 { margin: 0; font-size: 1.5rem; }
+
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .global-controls {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        .global-controls h2 {
+            margin-top: 0;
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+        }
+
+        .form-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .input-combo {
+            display: flex;
+            gap: 6px;
+        }
+
+        input[type="text"] {
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        select.history-select {
+            background: #0f172a url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2394a3b8' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E") no-repeat center center;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            width: 36px;
+            cursor: pointer;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+        }
+
+        select.history-select option {
+            background-color: #1e293b;
+            color: #f8fafc;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
         button:hover { opacity: 0.9; }
-        
-        .device-row { background: #1f2937; padding: 10px 14px; border-radius: 6px; border: 1px solid #374151; display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-top: 8px; font-size: 12px; }
-        .device-info { display: flex; align-items: center; gap: 10px; min-width: 180px; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-        .dot-online { background: #16a34a; }
-        .dot-offline { background: #64748b; }
-        .device-name { color: #f8fafc; font-weight: bold; }
-        .device-ip { color: #64748b; font-size: 0.75rem; }
-        .metrics-inline { display: flex; gap: 20px; align-items: center; color: #cbd5e1; }
-        .metric-item span { color: #f8fafc; font-weight: bold; }
-        .empty-fleet { color: #64748b; font-style: italic; padding: 10px; text-align: center; }
+
+        button.btn-success { background: var(--success); }
+        button.btn-warning { background: var(--warning); color: #000; }
+        button.btn-danger { background: var(--danger); }
+        button.btn-secondary { background: #475569; }
+
+        .device-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 16px;
+        }
+
+        .device-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            position: relative;
+        }
+
+        .device-card.offline {
+            opacity: 0.6;
+        }
+
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .device-name {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .badge {
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .badge-online { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+        .badge-offline { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+        .badge-override { background: rgba(245, 158, 11, 0.2); color: var(--warning); border: 1px solid var(--warning); }
+
+        .telemetry-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.875rem;
+            margin-bottom: 6px;
+            color: var(--text-muted);
+        }
+
+        .telemetry-value {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        .device-actions {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .device-actions button {
+            font-size: 0.75rem;
+            padding: 4px 8px;
+        }
     </style>
 </head>
 <body>
+    <div class="container">
+        <header>
+            <h1>Fleet Telemetry & Command Center</h1>
+            <div id="connection-status" class="badge badge-offline">Connecting...</div>
+        </header>
 
-    <h1>FLEETSTREAM BRIDGE</h1>
-    <p class="subtitle">Streaming Redundancy & Remote Control Fleet Core Dashboard</p>
+        <!-- Fleet Stats Bar -->
+        <section class="stats-bar">
+            <div class="stat-card">
+                <span class="stat-label">Total Endpoints</span>
+                <span class="stat-value" id="stat-total">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Online</span>
+                <span class="stat-value" id="stat-online" style="color: var(--success);">0</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Global Mode</span>
+                <span class="stat-value" id="stat-mode" style="color: var(--primary);">STANDBY</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Overridden Devices</span>
+                <span class="stat-value" id="stat-overridden" style="color: var(--warning);">0</span>
+            </div>
+        </section>
 
-    <!-- 1. Endpoint Fleet Status Monitor -->
-    <div class="card">
-        <h3>Fleet Status Monitor (<span id="device-count">0</span> Devices)</h3>
-        <div id="device-container">
-            <div class="empty-fleet" id="empty-fleet-msg">Waiting for endpoint devices to check in...</div>
+        <section class="global-controls">
+            <h2>Global Fleet Control</h2>
+            <div class="form-group">
+                <div>
+                    <label style="font-size: 0.8rem; color: var(--text-muted);">Active Stream URL (STREAM mode)</label>
+                    <div class="input-combo">
+                        <input type="text" id="globalActiveUrl" onfocus="this.select()" placeholder="https://...">
+                        <select id="active-stream-history" class="history-select" onchange="selectHistory('globalActiveUrl', this)">
+                            <option value="" disabled selected></option>
+                        </select>
+                    </div>
+                </div>
+    <div>
+        <label style="font-size: 0.8rem; color: var(--text-muted);">Standby Stream URL (STANDBY mode)</label>
+        <div class="input-combo">
+            <input type="text" id="globalStandbyUrl" onfocus="this.select()" placeholder="https://...">
+            <select id="standby-stream-history" class="history-select" onchange="selectHistory('globalStandbyUrl', this)">
+                <option value="" disabled selected></option>
+            </select>
         </div>
     </div>
+</div>
+            <div class="btn-group">
+                <button class="btn-success" onclick="updateGlobalState('STREAM')">Switch Whole Fleet to STREAM</button>
+                <button class="btn-warning" onclick="updateGlobalState('STANDBY')">Switch Whole Fleet to STANDBY</button>
+            </div>
+        </section>
 
-    <!-- 2. Stream Configuration & Mode Controls -->
-    <div class="card">
-        <h3>Stream Configuration & Controls</h3>
-        
-        <label for="activeUrlInput">Active Stream URL</label>
-        <div class="input-take-group">
-            <button class="btn-take" onclick="takeStream('activeUrlInput', 'STREAM')">TAKE</button>
-            <input type="text" id="activeUrlInput" list="activeHistory" placeholder="Enter or select active stream URL...">
-            <datalist id="activeHistory"></datalist>
-        </div>
-
-        <label for="standbyUrlInput">Standby Stream URL</label>
-        <div class="input-take-group">
-            <button class="btn-take" onclick="takeStream('standbyUrlInput', 'STANDBY')">TAKE</button>
-            <input type="text" id="standbyUrlInput" list="standbyHistory" placeholder="Enter or select standby stream URL...">
-            <datalist id="standbyHistory"></datalist>
-        </div>
-
-        <div class="btn-group" style="margin-top: 15px;">
-            <button class="btn-stream" onclick="switchMode('STREAM')">Switch Fleet to STREAM</button>
-            <button class="btn-standby" onclick="switchMode('STANDBY')">Switch Fleet to STANDBY</button>
-        </div>
+        <section>
+            <h2>Connected Devices (<span id="device-count">0</span>)</h2>
+            <div id="device-grid" class="device-grid"></div>
+        </section>
     </div>
 
     <script>
-        const evtSource = new EventSource('/api/events');
-        const historySet = { active: new Set(), standby: new Set() };
-        const trackedDevices = new Map();
+        let devicesMap = new Map();
+        let globalState = {};
 
-        evtSource.onmessage = function(event) {
-            try {
-                const data = JSON.parse(event.data);
-                
-                if (data.type === 'initial_sync') {
-                    if (data.globalState) {
-                        updateGlobalStateUI(data.globalState);
-                    }
-                    if (data.devices) {
-                        Object.values(data.devices).forEach(dev => upsertDeviceUI(dev));
-                    }
-                } else if (data.type === 'device_update') {
-                    upsertDeviceUI(data.device || data);
-                } else if (data.type === 'state_change') {
-                    updateGlobalStateUI(data);
+        function formatUptime(seconds) {
+            const s = Math.max(0, Number(seconds) || 0);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = Math.floor(s % 60);
+            if (h > 0) return `${h}h ${m}m ${sec}s`;
+            if (m > 0) return `${m}m ${sec}s`;
+            return `${sec}s`;
+        }
+
+        function liveUptime(dev) {
+            const base = Number(dev.uptimeSeconds) || 0;
+            const last = Number(dev.lastSeen) || Date.now();
+            const elapsed = Math.max(0, Math.floor((Date.now() - last) / 1000));
+            return formatUptime(base + elapsed);
+        }
+
+        function formatLastSeen(ms) {
+            const d = new Date(ms);
+            const y = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const h = String(d.getHours()).padStart(2, '0');
+            const mi = String(d.getMinutes()).padStart(2, '0');
+            const s = String(d.getSeconds()).padStart(2, '0');
+            return `${y}-${mo}-${day} ${h}:${mi}:${s}`;
+        }
+
+        const evtSource = new EventSource('/events');
+
+        evtSource.onopen = () => {
+            const status = document.getElementById('connection-status');
+            status.className = 'badge badge-online';
+            status.innerText = 'Connected (SSE)';
+        };
+
+        evtSource.onerror = () => {
+            const status = document.getElementById('connection-status');
+            status.className = 'badge badge-offline';
+            status.innerText = 'Disconnected';
+        };
+
+        evtSource.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+
+            // Normalize incoming streams to state-keyed map
+            const streamMap = data.knownStreams || {
+                STREAM: data.knownActiveStreams || [],
+                STANDBY: data.knownStandbyStreams || []
+            };
+
+            if (data.type === 'init') {
+                globalState = data.globalState;
+                updateGlobalInputs();
+                updateKnownStreams(streamMap);
+                devicesMap.clear();
+                data.devices.forEach(d => devicesMap.set(d.deviceId, d));
+                renderDevices();
+            } else if (data.type === 'state_change') {
+                globalState = data.globalState;
+                updateGlobalInputs();
+                updateKnownStreams(streamMap);
+                if (data.devices) {
+                    data.devices.forEach(d => devicesMap.set(d.deviceId, d));
                 }
-            } catch (e) {
-                console.error('[SSE] Failed to parse incoming event data:', e);
+                renderDevices();
+            } else if (data.type === 'device_update') {
+                devicesMap.set(data.device.deviceId, data.device);
+                updateKnownStreams(streamMap);
+                renderDevices();
+            } else if (data.type === 'device_list') {
+                devicesMap.clear();
+                data.devices.forEach(d => devicesMap.set(d.deviceId, d));
+                renderDevices();
             }
         };
 
-        evtSource.onerror = function(err) {
-            console.error('[SSE] EventSource connection lost:', err);
-        };
-
-        function updateGlobalStateUI(state) {
-            if (state.activeStreamUrl) {
-                document.getElementById('activeUrlInput').value = state.activeStreamUrl;
-                addHistory('active', state.activeStreamUrl);
-            }
-            if (state.standbyStreamUrl) {
-                document.getElementById('standbyUrlInput').value = state.standbyStreamUrl;
-                addHistory('standby', state.standbyStreamUrl);
+        function selectHistory(inputId, selectEl) {
+            if (selectEl.value) {
+                document.getElementById(inputId).value = selectEl.value;
+                selectEl.selectedIndex = 0;
             }
         }
 
-        function upsertDeviceUI(dev) {
-            if (!dev || !dev.deviceId) return;
-            trackedDevices.set(dev.deviceId, dev);
-
-            const container = document.getElementById('device-container');
-            const emptyMsg = document.getElementById('empty-fleet-msg');
-            if (emptyMsg) emptyMsg.remove();
-
-            let row = document.getElementById(`device-row-${dev.deviceId}`);
-            if (!row) {
-                row = document.createElement('div');
-                row.className = 'device-row';
-                row.id = `device-row-${dev.deviceId}`;
-                container.appendChild(row);
-            }
-
-            const streamUrl = dev.streamUrl || dev.activeStreamUrl || '';
-            const proto = streamUrl.startsWith('rtmp') ? 'RTMP' : (streamUrl.includes('m3u8') ? 'HLS' : '-');
-
-            row.innerHTML = `
-                <div class="device-info">
-                    <span class="status-dot ${dev.online ? 'dot-online' : 'dot-offline'}" title="Connection Status"></span>
-                    <div>
-                        <div class="device-name">${escapeHtml(dev.nodeName || dev.deviceId)}</div>
-                        <div class="device-ip">${escapeHtml(dev.nodeIp || 'Unknown IP')} (${escapeHtml(dev.deviceId)})</div>
-                    </div>
-                </div>
-                <div class="metrics-inline">
-                    <div class="metric-item">STATUS: <span>${escapeHtml(dev.status || dev.appState || '-')}</span></div>
-                    <div class="metric-item">PROTO: <span>${proto}</span></div>
-                    <div class="metric-item">BITRATE: <span>${dev.bitrate !== undefined ? dev.bitrate : 0} Mbps</span></div>
-                    <div class="metric-item">TEMP: <span>${dev.temp !== undefined ? dev.temp : 0}°C</span></div>
-                    <div class="metric-item">CPU: <span>${dev.cpu !== undefined ? dev.cpu : 0}%</span></div>
-                </div>
-            `;
-
-            document.getElementById('device-count').textContent = trackedDevices.size;
+        function updateGlobalInputs() {
+            if (globalState.activeStreamUrl) document.getElementById('globalActiveUrl').value = globalState.activeStreamUrl;
+            if (globalState.standbyStreamUrl) document.getElementById('globalStandbyUrl').value = globalState.standbyStreamUrl;
+            if (globalState.appState) document.getElementById('stat-mode').innerText = globalState.appState;
         }
 
-        function addHistory(type, url) {
-            if (!url) return;
-            const setObj = historySet[type];
-            if (!setObj.has(url)) {
-                setObj.add(url);
-                const datalist = document.getElementById(type === 'active' ? 'activeHistory' : 'standbyHistory');
-                const opt = document.createElement('option');
-                opt.value = url;
-                datalist.appendChild(opt);
-            }
-        }
-
-        function escapeHtml(str) {
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-
-        function takeStream(inputId, targetState) {
-            const urlValue = document.getElementById(inputId).value;
-            addHistory(targetState === 'STREAM' ? 'active' : 'standby', urlValue);
-
-            const payload = { appState: targetState };
-            if (targetState === 'STREAM') {
-                payload.activeStreamUrl = urlValue;
+        // Dynamically populates history selectors based on state key
+        function updateKnownStreams(activeOrMap, standby) {
+            let streamMap = {};
+            
+            if (activeOrMap && typeof activeOrMap === 'object' && !Array.isArray(activeOrMap)) {
+                streamMap = activeOrMap;
             } else {
-                payload.standbyStreamUrl = urlValue;
+                streamMap = {
+                    STREAM: Array.isArray(activeOrMap) ? activeOrMap : [],
+                    STANDBY: Array.isArray(standby) ? standby : []
+                };
             }
 
-            fetch('/api/update', {
+            const idMap = {
+                STREAM: 'active-stream-history',
+                STANDBY: 'standby-stream-history'
+            };
+
+            Object.entries(streamMap).forEach(([stateKey, streams]) => {
+                const selectId = idMap[stateKey.toUpperCase()] || `${stateKey.toLowerCase()}-stream-history`;
+                const select = document.getElementById(selectId);
+                if (!select || !Array.isArray(streams)) return;
+
+                select.innerHTML = '<option value="" disabled selected></option>';
+                
+                const unique = [...new Set(streams)].filter(url => url && url.trim() !== '');
+                unique.forEach(url => {
+                    const opt = document.createElement('option');
+                    opt.value = url;
+                    opt.textContent = url;
+                    select.appendChild(opt);
+                });
+            });
+        }
+        async function updateGlobalState(appState) {
+            const activeStreamUrl = document.getElementById('globalActiveUrl').value;
+            const standbyStreamUrl = document.getElementById('globalStandbyUrl').value;
+
+            await fetch('/api/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .catch(err => {
-                console.error('Failed to execute TAKE:', err);
-                alert('Failed to execute TAKE: ' + err);
+                body: JSON.stringify({ appState, activeStreamUrl, standbyStreamUrl })
             });
         }
 
-        function switchMode(targetState) {
-            const activeStreamUrl = document.getElementById('activeUrlInput').value;
-            const standbyStreamUrl = document.getElementById('standbyUrlInput').value;
+        async function overrideDevice(deviceId, appState) {
+            const activeStreamUrl = document.getElementById('globalActiveUrl').value;
+            const standbyStreamUrl = document.getElementById('globalStandbyUrl').value;
+            const targetUrl = appState === 'STREAM' ? activeStreamUrl : standbyStreamUrl;
 
-            fetch('/api/update', {
+            await fetch('/api/device/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    appState: targetState, 
-                    activeStreamUrl, 
-                    standbyStreamUrl 
-                })
-            })
-            .catch(err => {
-                console.error('Failed to switch mode:', err);
-                alert('Failed to switch mode: ' + err);
+                body: JSON.stringify({ deviceId, appState, streamUrl: targetUrl })
             });
         }
+
+        async function clearOverride(deviceId) {
+            await fetch('/api/device/clear-override', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deviceId })
+            });
+        }
+
+        function renderDevices() {
+            const grid = document.getElementById('device-grid');
+            document.getElementById('device-count').innerText = devicesMap.size;
+            document.getElementById('stat-total').innerText = devicesMap.size;
+
+            let onlineCount = 0;
+            let overriddenCount = 0;
+
+            const currentCardIds = new Set();
+
+            devicesMap.forEach(dev => {
+                if (dev.online) onlineCount++;
+                if (dev.isOverridden) overriddenCount++;
+
+                const cardId = `device-card-${dev.deviceId}`;
+                currentCardIds.add(cardId);
+                let card = document.getElementById(cardId);
+
+                if (!card) {
+                    card = document.createElement('div');
+                    card.id = cardId;
+                    grid.appendChild(card);
+                }
+
+                const isOnline = dev.online;
+                card.className = `device-card ${isOnline ? '' : 'offline'}`;
+                const statusBadge = isOnline ? 'badge-online' : 'badge-offline';
+
+                const timeLabel = isOnline ? 'Uptime:' : 'Last Seen:';
+                const timeValue = isOnline 
+                    ? liveUptime(dev) 
+                    : (dev.lastSeen ? formatLastSeen(dev.lastSeen) : '-');
+
+                card.innerHTML = `
+                    <div class="device-header">
+                        <div class="device-name">${dev.nodeName || dev.deviceName || dev.deviceId}</div>
+                        <div>
+                            ${dev.isOverridden ? '<span class="badge badge-override">Overridden</span>' : ''}
+                            <span class="badge ${statusBadge}">${isOnline ? 'Online' : 'Offline'}</span>
+                        </div>
+                    </div>
+                    <div class="telemetry-row"><span>Device ID:</span> <span class="telemetry-value">${dev.deviceId}</span></div>
+                    <div class="telemetry-row"><span>IP Address:</span> <span class="telemetry-value">${dev.nodeIp || '-'}</span></div>
+                    <div class="telemetry-row"><span>Status State:</span> <span class="telemetry-value">${dev.status || 'STANDBY'}</span></div>
+                    <div class="telemetry-row"><span>${timeLabel}</span> <span class="telemetry-value">${timeValue}</span></div>
+                    <div class="telemetry-row"><span>Bitrate:</span> <span class="telemetry-value">${isOnline && dev.bitrate && dev.bitrate !== '-' ? dev.bitrate + ' Mbps' : '-'}</span></div>
+                    <div class="telemetry-row"><span>Resolution:</span> <span class="telemetry-value">${isOnline ? (dev.streamResolution || '-') : '-'}</span></div>
+                    <div class="telemetry-row"><span>CPU / Temp:</span> <span class="telemetry-value">${isOnline && dev.cpu !== '-' ? dev.cpu + '%' : '-'} / ${isOnline && dev.temp !== '-' ? dev.temp + '°C' : '-'}</span></div>
+                    <div class="telemetry-row"><span>Stream URL:</span> <span class="telemetry-value" style="word-break: break-all; font-size: 0.75rem;">${isOnline ? (dev.streamUrl || 'None') : '-'}</span></div>
+                    
+                    <div class="device-actions">
+                        <button class="btn-success" onclick="overrideDevice('${dev.deviceId}', 'STREAM')">To STREAM</button>
+                        <button class="btn-warning" onclick="overrideDevice('${dev.deviceId}', 'STANDBY')">To STANDBY</button>
+                        ${dev.isOverridden ? `<button class="btn-secondary" onclick="clearOverride('${dev.deviceId}')">Rejoin Fleet</button>` : ''}
+                    </div>
+                `;
+            });
+
+            // Remove stale cards
+            Array.from(grid.children).forEach(child => {
+                if (!currentCardIds.has(child.id)) {
+                    grid.removeChild(child);
+                }
+            });
+
+            document.getElementById('stat-online').innerText = onlineCount;
+            document.getElementById('stat-overridden').innerText = overriddenCount;
+        }
+        setInterval(() => {
+            if (devicesMap.size > 0) renderDevices();
+        }, 1000);
     </script>
 </body>
 </html>

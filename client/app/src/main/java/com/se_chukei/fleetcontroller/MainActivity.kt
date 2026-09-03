@@ -10,11 +10,14 @@ import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -40,10 +43,10 @@ import org.json.JSONObject
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.interfaces.IMedia
 import org.videolan.libvlc.util.VLCVideoLayout
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.time.Duration.Companion.milliseconds
 
 enum class State {
     STANDBY, STREAM, PLAYBACK
@@ -86,8 +89,8 @@ class MainActivity : AppCompatActivity() {
 
     private var lastValidStandbyUrl: String? = null
     private var lastValidStreamUrl: String? = null
+    private var lastKnownResolution: String? = null
 
-    // After client-side fallback, ignore bridge attempts to re-push the same broken URL
     private var recoveryLockUntilMs: Long = 0L
     private var recoveryLockedUrl: String? = null
 
@@ -107,9 +110,10 @@ class MainActivity : AppCompatActivity() {
     private val standbyKeepaliveIntervalMs = 50 * 60 * 1000L
     private var lastKeepaliveMs: Long = 0L
 
-    // ---------- Telemetry / DataBridge ----------
     private lateinit var telemetryCollector: TelemetryCollector
     private var dataBridgePoller: DataBridgePoller? = null
+
+    private val mainDisplayName = "テスト拠点1"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -157,61 +161,116 @@ class MainActivity : AppCompatActivity() {
         fleetServiceIntent = Intent(this, FleetService::class.java)
         startService(fleetServiceIntent)
 
-        startPollingDataBridge()
         startIndependentWatchdog()
         startStandbyKeepalive()
 
-        // ---------- Start telemetry poller ----------
+        // ---------- Start consolidated telemetry & state poller ----------
         telemetryCollector = TelemetryCollector(this)
         dataBridgePoller = DataBridgePoller(
             dataBridgeUrl = dataBridgeUrl,
             telemetryCollector = telemetryCollector,
             getTelemetryContext = {
-                // Capture player state on the main thread
                 var bitrateMbps = 0.0
                 var droppedFrames = 0
                 var hasPlayerError = false
+                var calculatedResolution: String? = null
 
-                // We are already on a background thread here, so hop to main briefly
                 val latch = java.util.concurrent.CountDownLatch(1)
                 runOnUiThread {
                     try {
                         exoPlayer?.let { player ->
                             val bitrateBps = player.videoFormat?.bitrate ?: -1
                             bitrateMbps = if (bitrateBps > 0) {
-                                String.format("%.2f", bitrateBps / 1_000_000.0).toDouble()
+                                String.format(java.util.Locale.US, "%.2f", bitrateBps / 1_000_000.0).toDouble()
                             } else {
                                 if (currentState == State.STREAM) 4.5 else 2.8
                             }
                             droppedFrames = player.videoDecoderCounters?.droppedBufferCount ?: 0
                             hasPlayerError = player.playerError != null
+
+                            val vf = player.videoFormat
+                            val w = vf?.width ?: 0
+                            val h = vf?.height ?: 0
+                            val fps = vf?.frameRate ?: -1f
+                            if (w >= 320 && h >= 240) {
+                                lastKnownResolution = if (fps > 0f) {
+                                    val fpsStr = when {
+                                        Math.abs(fps - 59.94f) < 0.1f -> "59.94"
+                                        Math.abs(fps - 29.97f) < 0.1f -> "29.97"
+                                        Math.abs(fps - 23.976f) < 0.1f -> "23.976"
+                                        else -> String.format(java.util.Locale.US, "%.0f", fps)
+                                    }
+                                    "${w}x${h}/${fpsStr}"
+                                } else {
+                                    "${w}x${h}"
+                                }
+                            }
                         }
+                        ?: run {
+                            if (::mediaPlayer.isInitialized) {
+                                val media = mediaPlayer.media
+                                if (media != null) {
+                                    for (i in 0 until media.trackCount) {
+                                        val track = media.getTrack(i)
+                                        if (track is IMedia.VideoTrack && track.width >= 320 && track.height >= 240) {
+                                            lastKnownResolution = "${track.width}x${track.height}"
+                                            break
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        calculatedResolution = lastKnownResolution
                     } finally {
                         latch.countDown()
                     }
                 }
-                latch.await(300, java.util.concurrent.TimeUnit.MILLISECONDS)
+                try {
+                    latch.await(300, java.util.concurrent.TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) { /* ignore */ }
 
                 DataBridgePoller.TelemetryContext(
                     deviceId = resolveDeviceId(),
                     deviceName = getDeviceName(),
-                    tailscaleIp = getTailscaleIp(),
+                    tailscaleIp = TailscaleIpHelper.getTailscaleIpv4(),
                     appState = currentState.name,
-                    currentStreamUri = currentStreamUrl ?: "",
+                    currentStreamUri = when (currentState) {
+                        State.STANDBY -> lastValidStandbyUrl ?: ""
+                        State.STREAM -> lastValidStreamUrl ?: currentStreamUrl ?: ""
+                        State.PLAYBACK -> ""
+                    },
                     targetStreamUri = currentStreamUrl ?: "",
-                    player = null,                       // do NOT pass the live player
+                    player = null,
                     isFallback = recoveryLockedUrl != null,
                     recoveryLockedUrl = recoveryLockedUrl,
                     versionCode = try {
                         packageManager.getPackageInfo(packageName, 0).longVersionCode.toInt()
                     } catch (e: Exception) {
                         1
-                    }
+                    },
+                    uptimeSeconds = getUptimeSeconds(),
+                    precomputedBitrateMbps = bitrateMbps,
+                    precomputedDroppedFrames = droppedFrames,
+                    precomputedHasError = hasPlayerError,
+                    precomputedStreamResolution = calculatedResolution,
+                    mainDisplayName = mainDisplayName
                 )
             },
-            onStateChanged = { newState, streamUrl, accessKeyRevoked ->
-                // Secondary channel – primary control still comes from the GET /api/state loop
-                Log.i("MainActivity", "Poller callback → state=$newState url=$streamUrl revoked=$accessKeyRevoked")
+            onStateChanged = { appStateString, newStreamUrl, accessKeyRevoked ->
+                consecutiveNetworkFailures = 0
+                Log.i("MainActivity", "Poller response → state=$appStateString url=$newStreamUrl revoked=$accessKeyRevoked")
+
+                val newState = when (appStateString.uppercase()) {
+                    "STREAM" -> State.STREAM
+                    "PLAYBACK" -> State.PLAYBACK
+                    else -> State.STANDBY
+                }
+
+                if (accessKeyRevoked) {
+                    updateState(State.STANDBY, null)
+                } else {
+                    updateState(newState, newStreamUrl)
+                }
             },
             onNetworkFailure = {
                 consecutiveNetworkFailures++
@@ -220,28 +279,37 @@ class MainActivity : AppCompatActivity() {
         ).also { it.startPolling() }
     }
 
-    // ---------- Device identity helpers ----------
     private fun resolveDeviceId(): String {
-        return Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-            ?: "unknown-${System.currentTimeMillis()}"
+        return try {
+            Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+                .takeIf { !it.isNullOrBlank() } ?: "unknown"
+        } catch (e: Exception) {
+            "unknown"
+        }
     }
 
     private fun getDeviceName(): String {
-        return try {
-            val bt = BluetoothAdapter.getDefaultAdapter()
-            bt?.name?.takeIf { it.isNotBlank() } ?: android.os.Build.MODEL
-        } catch (e: Exception) {
+        val globalName = android.provider.Settings.Global.getString(contentResolver, "device_name")
+        return if (!globalName.isNullOrBlank()) {
+            globalName
+        } else {
             android.os.Build.MODEL
         }
     }
 
-    private fun getTailscaleIp(): String {
-        // TODO: replace with real Tailscale IP discovery when available
-        return "100.x.x.x"
+    private fun getUptimeSeconds(): Long {
+        return android.os.SystemClock.elapsedRealtime() / 1000
     }
 
     private fun suppressBluetoothDiscovery() {
-        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter() ?: return
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_SCAN) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Log.w("MainActivity", "Skipping Bluetooth scan mode suppression (missing BLUETOOTH_SCAN permission)")
+                return
+            }
+        }
+        val bluetoothManager = getSystemService(android.content.Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager
+        val bluetoothAdapter = bluetoothManager?.adapter ?: return
         try {
             val method = bluetoothAdapter.javaClass.getMethod("setScanMode", Int::class.java)
             method.invoke(bluetoothAdapter, BluetoothAdapter.SCAN_MODE_CONNECTABLE)
@@ -254,14 +322,22 @@ class MainActivity : AppCompatActivity() {
     private fun initExoPlayer() {
         if (exoPlayer == null) {
             val loadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(1500, 5000, 500, 500)
+                .setBufferDurationsMs(3000, 15000, 1500, 3000)
                 .build()
 
             val dataSourceFactory = DefaultHttpDataSource.Factory()
             val mediaSourceFactory = HlsMediaSource.Factory(dataSourceFactory)
                 .setAllowChunklessPreparation(true)
 
+            val trackSelector = DefaultTrackSelector(this).apply {
+                parameters = buildUponParameters()
+                    .setMaxVideoBitrate(40_000_000)
+                    .setMinVideoBitrate(2_000_000)
+                    .build()
+            }
+
             exoPlayer = ExoPlayer.Builder(this, DefaultRenderersFactory(this), mediaSourceFactory)
+                .setTrackSelector(trackSelector)
                 .setLoadControl(loadControl)
                 .build().apply {
                     addListener(object : Player.Listener {
@@ -283,6 +359,20 @@ class MainActivity : AppCompatActivity() {
                                 runOnUiThread { fallbackToStandby() }
                             }
                         }
+
+                        override fun onTracksChanged(tracks: Tracks) {
+                            tracks.groups.forEach { group ->
+                                if (group.type == C.TRACK_TYPE_VIDEO) {
+                                    for (i in 0 until group.length) {
+                                        val f = group.getTrackFormat(i)
+                                        Log.i(
+                                            "Tracks",
+                                            "w=${f.width} h=${f.height} br=${f.bitrate} selected=${group.isTrackSelected(i)}"
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     })
                 }
             exoPlayerView.player = exoPlayer
@@ -296,7 +386,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun forceStopImmediate() {
         try {
-            mediaPlayer.stop()
+            if (mediaPlayer.isPlaying) {
+                mediaPlayer.stop()
+            }
             mediaPlayer.media?.release()
             mediaPlayer.media = null
         } catch (e: Exception) {
@@ -359,7 +451,9 @@ class MainActivity : AppCompatActivity() {
     private fun setPlayerVolume(vol: Int) {
         try {
             val clampedVol = vol.coerceIn(0, 100)
-            mediaPlayer.volume = clampedVol
+            if (::mediaPlayer.isInitialized) {
+                mediaPlayer.volume = clampedVol
+            }
             exoPlayer?.volume = clampedVol / 100f
         } catch (e: Exception) {
             Log.w("MainActivity", "setPlayerVolume failed: ${e.message}")
@@ -390,52 +484,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startPollingDataBridge() {
-        scope.launch(Dispatchers.IO) {
-            while (isActive) {
-                try {
-                    val request = Request.Builder()
-                        .url(dataBridgeUrl)
-                        .header("Connection", "close")
-                        .build()
-                    client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            consecutiveNetworkFailures = 0
-                            response.body?.string()?.let { responseBody ->
-                                val json = JSONObject(responseBody)
-                                val newStreamUrl = json.optString("streamUrl", "")
-                                val appStateString = json.optString("appState", "STANDBY")
-                                val accessKeyRevoked = json.optBoolean("accessKeyRevoked", false)
-
-                                Log.i("MainActivity", "Bridge → state=$appStateString | url=$newStreamUrl")
-
-                                val newState = when (appStateString) {
-                                    "STREAM" -> State.STREAM
-                                    "PLAYBACK" -> State.PLAYBACK
-                                    else -> State.STANDBY
-                                }
-
-                                if (accessKeyRevoked) {
-                                    updateState(State.STANDBY, null)
-                                } else {
-                                    updateState(newState, newStreamUrl)
-                                }
-                            }
-                        } else {
-                            consecutiveNetworkFailures++
-                            Log.e("MainActivity", "Bridge returned non-success code: ${response.code}, keeping current playback state alive.")
-                        }
-                    }
-                } catch (e: Exception) {
-                    consecutiveNetworkFailures++
-                    Log.d("MainActivity", "Polling waiting for network/bridge: ${e.message}")
-                }
-
-                delay(2000.milliseconds)
-            }
-        }
-    }
-
     private fun updateState(newState: State, url: String?, isRecovery: Boolean = false) {
         val runnable = Runnable {
             val now = System.currentTimeMillis()
@@ -456,7 +504,7 @@ class MainActivity : AppCompatActivity() {
                 if (newState == State.STANDBY) {
                     lastValidStandbyUrl = url
                     Log.i("MainActivity", "Saved new good STANDBY URL: $url")
-                } else {
+                } else if (newState == State.STREAM) {
                     lastValidStreamUrl = url
                 }
             }
@@ -593,6 +641,14 @@ class MainActivity : AppCompatActivity() {
     private fun startMediaInternal(url: String, isRecovery: Boolean) {
         try {
             if (useVlcFor(url)) {
+                // Ensure ExoPlayer is fully stopped to prevent duplicate simultaneous audio
+                try {
+                    exoPlayer?.stop()
+                    exoPlayer?.clearMediaItems()
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "ExoPlayer stop on VLC switch: ${e.message}")
+                }
+
                 val media = Media(libVLC, url.toUri()).apply {
                     setHWDecoderEnabled(true, false)
                     addOption(":network-caching=1500")
@@ -607,6 +663,17 @@ class MainActivity : AppCompatActivity() {
 
                 Log.i("MainActivity", "VLC playing: $url")
             } else {
+                // Ensure VLC is fully stopped to prevent duplicate simultaneous audio
+                try {
+                    if (mediaPlayer.isPlaying) {
+                        mediaPlayer.stop()
+                    }
+                    mediaPlayer.media?.release()
+                    mediaPlayer.media = null
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "VLC stop on ExoPlayer switch: ${e.message}")
+                }
+
                 initExoPlayer()
                 runOnUiThread {
                     blackOverlay?.visibility = View.GONE
@@ -619,9 +686,9 @@ class MainActivity : AppCompatActivity() {
 
                     exoPlayer?.let { player ->
                         val liveConfig = MediaItem.LiveConfiguration.Builder()
-                            .setTargetOffsetMs(2000)
-                            .setMinOffsetMs(1000)
-                            .setMaxOffsetMs(4000)
+                            .setTargetOffsetMs(3500)
+                            .setMinOffsetMs(2000)
+                            .setMaxOffsetMs(8000)
                             .build()
 
                         val mediaItem = MediaItem.Builder()
@@ -881,14 +948,13 @@ class MainActivity : AppCompatActivity() {
     private fun reportFreezeToDataBridge(extraMessage: String = "Stream freeze detected") {
         scope.launch(Dispatchers.IO) {
             try {
-                // Use the same /api/sync endpoint the poller uses
                 val reportUrl = dataBridgeUrl.replace("/api/state", "/api/sync")
                 val recent = synchronized(freezeLog) {
                     freezeLog.toList().takeLast(15).joinToString("\n")
                 }
                 val jsonPayload = JSONObject().apply {
                     put("deviceId", resolveDeviceId())
-                    put("nodeName", getDeviceName())
+                    put("nodeName", mainDisplayName)
                     put("status", "WARNING")
                     put("message", extraMessage)
                     put("lastFreezeTimestamp", System.currentTimeMillis())
@@ -909,6 +975,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Resume stream playback if activity becomes visible after being backgrounded
+        currentStreamUrl?.let { url ->
+            if (url.isNotBlank()) {
+                playStream(url, isRecovery = true)
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
@@ -923,6 +999,12 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         wakeLock?.let { if (it.isHeld) it.release() }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Terminate hardware decoders & stop audio immediately when leaving app
+        forceStopImmediate()
     }
 
     override fun onDestroy() {

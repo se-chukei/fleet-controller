@@ -13,7 +13,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -21,7 +20,7 @@ import kotlin.math.min
 import kotlin.random.Random
 
 class DataBridgePoller(
-    private val dataBridgeUrl: String, 
+    private val dataBridgeUrl: String,
     private val telemetryCollector: TelemetryCollector,
     private val getTelemetryContext: () -> TelemetryContext,
     private val onStateChanged: (newState: String, streamUrl: String, accessKeyRevoked: Boolean) -> Unit,
@@ -37,7 +36,13 @@ class DataBridgePoller(
         val player: ExoPlayer?,
         val isFallback: Boolean,
         val recoveryLockedUrl: String?,
-        val versionCode: Int
+        val versionCode: Int,
+        val uptimeSeconds: Long = 0L,
+        val precomputedBitrateMbps: Double? = null,
+        val precomputedDroppedFrames: Int? = null,
+        val precomputedHasError: Boolean? = null,
+        val precomputedStreamResolution: String? = null,   // ← must exist
+        val mainDisplayName: String = "テスト拠点1"
     )
 
     private val tag = "DataBridgePoller"
@@ -74,14 +79,16 @@ class DataBridgePoller(
                 } catch (e: Exception) {
                     consecutiveFailures++
                     Log.w(tag, "Sync error (attempt $consecutiveFailures): ${e.message}")
-                    
                     if (consecutiveFailures >= 3) {
                         onNetworkFailure()
                     }
                 }
 
                 if (consecutiveFailures > 0) {
-                    val exponentialMultiplier = min(maxBackoffMs, baseIntervalMs * (1 shl min(consecutiveFailures - 1, 5)))
+                    val exponentialMultiplier = min(
+                        maxBackoffMs,
+                        baseIntervalMs * (1 shl min(consecutiveFailures - 1, 5))
+                    )
                     val jitterMs = Random.nextLong(500L, 2000L)
                     currentDelay = exponentialMultiplier + jitterMs
                 } else {
@@ -105,23 +112,32 @@ class DataBridgePoller(
             player = ctx.player,
             isFallback = ctx.isFallback,
             recoveryLockedUrl = ctx.recoveryLockedUrl,
-            versionCode = ctx.versionCode
+            versionCode = ctx.versionCode,
+            uptimeSeconds = ctx.uptimeSeconds,
+            precomputedBitrateMbps = ctx.precomputedBitrateMbps,
+            precomputedDroppedFrames = ctx.precomputedDroppedFrames,
+            precomputedHasError = ctx.precomputedHasError,
+            precomputedStreamResolution = ctx.precomputedStreamResolution
         )
 
         val jsonPayload = JSONObject().apply {
-            // Strict alignment with server's expected telemetry schema
             put("deviceId", payload.id)
-            put("nodeName", payload.name)
+            put("nodeName", ctx.mainDisplayName)
+            put("deviceName", payload.name)
             put("nodeIp", payload.tailscaleIp)
             put("status", payload.status)
             put("bitrate", payload.bitrateMbps)
             put("temp", payload.deviceTempC)
+            put("status", payload.status)
+            put("bitrate", payload.bitrateMbps)
+            put("streamResolution", payload.streamResolution)
+            put("temp", payload.deviceTempC)
             put("cpu", payload.cpuUsagePercent)
-            put("streamUrl", payload.streamUri) 
-            
-            // Retained extended payload details for logging/diagnostics
-            put("appState", payload.appState)
+            put("streamUrl", payload.streamUri)
             put("powerState", payload.powerState)
+            put("uptimeSeconds", payload.uptimeSeconds)
+
+            put("appState", payload.appState)
             put("activePlayer", payload.activePlayer)
             put("playerViewType", payload.playerViewType)
             put("troubleshootActive", payload.troubleshootActive)
@@ -156,20 +172,30 @@ class DataBridgePoller(
                 throw IOException("Data bridge returned error code: ${response.code}")
             }
 
-            val responseBody = response.body?.string() ?: throw IOException("Empty response body")
-            parseAndDispatch(responseBody)
+            val responseBody = response.body?.string()
+                ?: throw IOException("Empty response body")
+            parseAndDispatch(responseBody, ctx)
         }
     }
 
-    private fun parseAndDispatch(jsonString: String) {
+    private fun parseAndDispatch(jsonString: String, currentCtx: TelemetryContext) {
         try {
             val json = JSONObject(jsonString)
-            val appState = json.optString("appState", "STANDBY")
-            val streamUrl = json.optString("streamUrl", "")
+            // Primary field: appState, fallback: status
+            val appState = if (json.has("appState")) {
+                json.optString("appState", "STANDBY")
+            } else {
+                json.optString("status", "STANDBY")
+            }
+            
+            val streamUrl = if (json.isNull("streamUrl")) "" else json.optString("streamUrl", "")
             val accessKeyRevoked = json.optBoolean("accessKeyRevoked", false)
 
-            if (appState != lastState || streamUrl != lastUrl) {
-                Log.d(tag, "State change detected! New State: $appState, URL: $streamUrl")
+            val stateChanged = appState != lastState || appState != currentCtx.appState
+            val urlChanged = streamUrl != lastUrl || streamUrl != currentCtx.targetStreamUri
+
+            if (stateChanged || urlChanged) {
+                Log.d(tag, "State/URL change detected in sync response! New State: $appState, URL: $streamUrl")
                 lastState = appState
                 lastUrl = streamUrl
                 onStateChanged(appState, streamUrl, accessKeyRevoked)

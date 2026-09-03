@@ -123,20 +123,22 @@ class FleetService : Service() {
         stopPlayback()
         scheduleWatchdog()
 
-        // Attempt ExoPlayer playback
-        exoPlayer?.let { player ->
-            val mediaItem = MediaItem.fromUri(url)
-            player.setMediaItem(mediaItem)
-            player.prepare()
-            player.play()
-        }
+        val isRtmp = url.startsWith("rtmp://", ignoreCase = true)
 
-        // Attempt VLC playback fallback
-        vlcPlayer?.let { player ->
-            libVLC?.let { vlc ->
-                val media = Media(vlc, android.net.Uri.parse(url))
-                player.media = media
-                media.release()
+        if (isRtmp) {
+            vlcPlayer?.let { player ->
+                libVLC?.let { vlc ->
+                    val media = Media(vlc, android.net.Uri.parse(url))
+                    player.media = media
+                    media.release()
+                    player.play()
+                }
+            }
+        } else {
+            exoPlayer?.let { player ->
+                val mediaItem = MediaItem.fromUri(url)
+                player.setMediaItem(mediaItem)
+                player.prepare()
                 player.play()
             }
         }

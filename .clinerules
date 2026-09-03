@@ -11,8 +11,19 @@
 3. NATIVE FIRST: Prefer native browser/language capabilities over installing npm packages.
 4. TERSE OUTPUT: Keep explanations brief and focus on clean file diffs.
 
-# Context Boundaries for Cerebras Coding Agent
-- DO NOT read or index directories like node_modules, .next, dist, build, or .git.
-- Focus exclusively on the /src folder or files explicitly declared in the prompt.
-- Do not search the entire repository for general answers; read specific files directly.
-- Prioritize structural performance. Write tight, strictly typed code blocks.
+# Monorepo Global Rules
+- Always use relative imports within the same package.
+- Do not cross-contaminate package dependencies without updating the root workspace config.
+
+## Package-Specific Context
+### /apps/web
+- Frontend stack: Next.js (App Router), Tailwind CSS.
+- Never write backend database queries inside this directory.
+
+### /apps/api
+- Backend stack: Node.js, Express, Prisma.
+- Adhere strictly to the REST API specifications outlined in /docs.
+
+### /packages/shared-ui
+- Pure UI components only.
+- No business logic or state management allowed here.
