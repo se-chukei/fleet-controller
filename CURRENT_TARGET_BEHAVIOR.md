@@ -6,6 +6,29 @@
 AI agents must treat the behavior described below as non-negotiable.  
 Do not “improve”, expand, or reinterpret it.
 
+## Implementation Reality Check (2026-09)
+
+The repository currently contains a more resilient Android client prototype than the minimal Phase 3/4 requirement. The implementation already includes:
+
+- Boot auto-start via `BootReceiver` and `RECEIVE_BOOT_COMPLETED`
+- A foreground service lifecycle with a persistent wake lock
+- Polling/telemetry sync against the Data Bridge at ~2-5s cadence with jitter
+- State switching between `STANDBY` and `STREAM`
+- Dual-player fallback logic with `VLC` and `ExoPlayer`
+- Stability watchdogs, soft recovery, and fallback-to-standby behavior
+- Telemetry payloads including device metadata, power state, uptime, and stream information
+
+This is a useful operational prototype, but it is not yet a perfect match for the strict minimal-target spec below. The deviations are intentionally tracked so the team can distinguish the approved target behavior from additional resilience work already in the codebase.
+
+The following items remain the target requirements and should be treated as the source of truth for acceptance work:
+
+- `FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK` is the required service type for the prototype target.
+- A minimal on-screen red-dot indicator is required only in `STANDBY` / `PLAYBACK` when a live event becomes available.
+- The prototype target remains zero-touch, full-screen, and requires no user interaction after boot.
+- `PLAYBACK` and USB media behavior remain out of scope unless specifically reintroduced.
+
+The current implementation is therefore best described as “enhanced prototype + resilience layer,” while the acceptance criteria remain the original minimal behavior above.
+
 ---
 
 ## 1. Cold Start Behavior (Zero-Touch)
@@ -24,6 +47,20 @@ On device power-on or OS reboot:
 
 **Success criterion:** Plug in power → device boots → full-screen video is playing with no user interaction.
 
+### Current implementation notes
+
+The repository currently does more than the minimal spec in the following ways:
+
+- `BootReceiver` starts `FleetService` on `ACTION_BOOT_COMPLETED`.
+- `MainActivity` also performs its own state-driven playback and recovery logic, including dual-engine switching and fallback logic.
+- The implementation contains a more cautious recovery path than the Phase 3/4 target, including stall detection and standby fallback.
+
+The following are still required to match the original prototype acceptance target exactly:
+
+- Foreground service type must remain `MEDIA_PLAYBACK` for the prototype target.
+- The app should not rely on an Activity-only startup path or a non-targeted launcher flow for the final zero-touch target.
+- Any additional resilience logic should be treated as a supplement, not as a relaxation of the required prototype behavior.
+
 ---
 
 ## 2. Telebeat / Polling Behavior
@@ -35,6 +72,12 @@ On device power-on or OS reboot:
 - Delta-driven switching only:
   - If state and streamUrl are unchanged → do nothing (keep current playback)
   - If state or streamUrl changed → switch playback immediately
+
+### Current implementation notes
+
+The codebase implements this behavior in `DataBridgePoller` and `MainActivity` with jittered polling and a trigger on state or URL changes. It also sends richer telemetry than the minimum list for internal diagnostics and dashboard visibility.
+
+The project should keep the minimal spec as the acceptance target even if telemetry payloads are more detailed than required.
 
 ---
 
@@ -52,6 +95,46 @@ On device power-on or OS reboot:
 - Display must stay fully active and ready for instant switch to STREAM
 
 **PLAYBACK** (USB/local) is out of scope for this prototype phase.
+
+### Current implementation notes
+
+The repo already contains a `State` enum with `STANDBY`, `STREAM`, and `PLAYBACK`, and the client switches based on the Data Bridge state. The code also includes extra resilience logic for playback recovery, which is useful for real hardware reliability but does not change the minimum prototype target.
+
+---
+
+## 4. Notification & On-Screen Indicator Behavior
+
+**Android System Foreground Notification (Required)**
+- Persistent low-priority ongoing notification required by the OS for the media playback foreground service.
+- Example text: `Fleet Controller – State: STREAM` (or `STANDBY` / `PLAYBACK`).
+
+**Dashboard Notifications**
+- Device marked OFFLINE if telebeats stop for > 15 seconds.
+
+**On-Screen Live Indicator (In Scope – Discreet Only)**
+
+When the device is in **STANDBY** or **PLAYBACK** and a live stream becomes available (but the user has not joined it):
+
+1. A **red dot** appears in the **lower-left corner** of the screen.
+2. Alongside the red dot, temporary text is shown in the form:  
+   `Stream is Live: ##event title##`
+3. After a short duration (exact timing still TBD – implement as a configurable value, default suggestion 8–12 seconds), the text fades out or disappears.
+4. The **red dot remains visible** as a persistent, discreet indicator that a live stream is available.
+5. The indicator must be minimal and must not significantly obstruct content.
+
+**Rules:**
+- This indicator is **only** shown when the current state is STANDBY or PLAYBACK.
+- When the user joins the stream (transitions to STREAM), the indicator is removed.
+- Do not implement toast messages, full banners, or any more prominent overlay in this phase.
+- Keep the implementation lightweight (preferably a simple Compose or View overlay, not a heavy dialog/system UI).
+
+### Current implementation notes
+
+The current codebase does not yet implement this live indicator overlay. This is one of the remaining explicit gaps between the repository’s current Android client and the prototype acceptance criteria.
+
+---
+
+## 5. Definition of Success (Google TV Streamer)
 
 ---
 

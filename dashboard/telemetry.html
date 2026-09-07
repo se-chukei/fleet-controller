@@ -462,7 +462,7 @@
                 card.className = `device-card ${isOnline ? '' : 'offline'}`;
                 const statusBadge = isOnline ? 'badge-online' : 'badge-offline';
 
-                const timeLabel = isOnline ? 'Uptime:' : 'Last Seen:';
+                const timeLabel = isOnline ? 'System Uptime:' : 'Last Seen:';
                 const timeValue = isOnline 
                     ? liveUptime(dev) 
                     : (dev.lastSeen ? formatLastSeen(dev.lastSeen) : '-');

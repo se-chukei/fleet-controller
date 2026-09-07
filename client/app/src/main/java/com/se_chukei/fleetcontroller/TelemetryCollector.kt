@@ -7,6 +7,7 @@ import android.os.BatteryManager
 import androidx.media3.exoplayer.ExoPlayer
 import java.io.File
 import java.io.RandomAccessFile
+import java.util.Locale
 
 data class TelemetryPayload(
     val id: String,
@@ -35,7 +36,11 @@ data class TelemetryPayload(
     val isOverridden: Boolean,
     val accessKeyRevoked: Boolean,
     val droppedFrames: Int,
-    val uptimeSeconds: Long
+    val consecutiveStalls: Int,
+    val consecutivePlaybackErrors: Int,
+    val consecutiveNetworkFailures: Int,
+    val uptimeSeconds: Long,
+    val deviceLocale: String
 )
 
 class TelemetryCollector(private val context: Context) {
@@ -55,7 +60,10 @@ class TelemetryCollector(private val context: Context) {
         precomputedBitrateMbps: Double? = null,
         precomputedDroppedFrames: Int? = null,
         precomputedHasError: Boolean? = null,
-        precomputedStreamResolution: String? = null
+        precomputedStreamResolution: String? = null,
+        consecutiveStalls: Int = 0,
+        consecutivePlaybackErrors: Int = 0,
+        consecutiveNetworkFailures: Int = 0
     ): TelemetryPayload {
 
         val batteryIntent = context.registerReceiver(
@@ -132,7 +140,11 @@ class TelemetryCollector(private val context: Context) {
             isOverridden = isFallback,
             accessKeyRevoked = false,
             droppedFrames = droppedFrames,
-            uptimeSeconds = uptimeSeconds
+            consecutiveStalls = consecutiveStalls,
+            consecutivePlaybackErrors = consecutivePlaybackErrors,
+            consecutiveNetworkFailures = consecutiveNetworkFailures,
+            uptimeSeconds = uptimeSeconds,
+            deviceLocale = Locale.getDefault().toLanguageTag()
         )
     }
 

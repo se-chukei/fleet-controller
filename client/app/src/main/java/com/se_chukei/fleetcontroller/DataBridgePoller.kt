@@ -23,7 +23,7 @@ class DataBridgePoller(
     private val dataBridgeUrl: String,
     private val telemetryCollector: TelemetryCollector,
     private val getTelemetryContext: () -> TelemetryContext,
-    private val onStateChanged: (newState: String, streamUrl: String, accessKeyRevoked: Boolean) -> Unit,
+    private val onStateChanged: (newState: String, streamUrl: String, accessKeyRevoked: Boolean, fleetState: String, fleetStreamUrl: String, eventTitle: String, streamEventId: String, streamStartedAt: Long?, streamExpiresAt: Long?) -> Unit,
     private val onNetworkFailure: () -> Unit
 ) {
     data class TelemetryContext(
@@ -42,6 +42,9 @@ class DataBridgePoller(
         val precomputedDroppedFrames: Int? = null,
         val precomputedHasError: Boolean? = null,
         val precomputedStreamResolution: String? = null,   // ← must exist
+        val consecutiveStalls: Int = 0,
+        val consecutivePlaybackErrors: Int = 0,
+        val consecutiveNetworkFailures: Int = 0,
         val mainDisplayName: String = "テスト拠点1"
     )
 
@@ -58,6 +61,8 @@ class DataBridgePoller(
 
     private var lastState: String? = null
     private var lastUrl: String? = null
+    private var lastStreamEventId: String? = null
+    private var lastStreamExpiresAt: Long? = null
 
     private var consecutiveFailures = 0
     private val baseIntervalMs = 2000L
@@ -117,7 +122,10 @@ class DataBridgePoller(
             precomputedBitrateMbps = ctx.precomputedBitrateMbps,
             precomputedDroppedFrames = ctx.precomputedDroppedFrames,
             precomputedHasError = ctx.precomputedHasError,
-            precomputedStreamResolution = ctx.precomputedStreamResolution
+            precomputedStreamResolution = ctx.precomputedStreamResolution,
+            consecutiveStalls = ctx.consecutiveStalls,
+            consecutivePlaybackErrors = ctx.consecutivePlaybackErrors,
+            consecutiveNetworkFailures = ctx.consecutiveNetworkFailures
         )
 
         val jsonPayload = JSONObject().apply {
@@ -143,6 +151,7 @@ class DataBridgePoller(
             put("troubleshootActive", payload.troubleshootActive)
             put("versionCode", payload.versionCode)
             put("lastSeenMs", payload.lastSeenMs)
+            put("deviceLocale", payload.deviceLocale)
             put("usbAttached", payload.usbAttached)
             put("usbDebounceCountdown", payload.usbDebounceCountdown ?: JSONObject.NULL)
             put("watchdogStep", payload.watchdogStep ?: JSONObject.NULL)
@@ -153,6 +162,9 @@ class DataBridgePoller(
             put("isOverridden", payload.isOverridden)
             put("accessKeyRevoked", payload.accessKeyRevoked)
             put("droppedFrames", payload.droppedFrames)
+            put("consecutiveStalls", payload.consecutiveStalls)
+            put("consecutivePlaybackErrors", payload.consecutivePlaybackErrors)
+            put("consecutiveNetworkFailures", payload.consecutiveNetworkFailures)
         }.toString()
 
         val apiIndex = dataBridgeUrl.indexOf("/api")
@@ -190,15 +202,24 @@ class DataBridgePoller(
             
             val streamUrl = if (json.isNull("streamUrl")) "" else json.optString("streamUrl", "")
             val accessKeyRevoked = json.optBoolean("accessKeyRevoked", false)
+            val fleetState = json.optString("fleetAppState", appState)
+            val fleetStreamUrl = json.optString("fleetStreamUrl", "")
+            val eventTitle = json.optString("eventTitle", "")
+            val streamEventId = json.optString("streamEventId", "")
+            val streamStartedAt = json.optLong("streamStartedAt", 0L).takeIf { it > 0L }
+            val streamExpiresAt = json.optLong("streamExpiresAt", 0L).takeIf { it > 0L }
 
             val stateChanged = appState != lastState || appState != currentCtx.appState
             val urlChanged = streamUrl != lastUrl || streamUrl != currentCtx.targetStreamUri
+            val expiryChanged = streamEventId != lastStreamEventId || streamExpiresAt != lastStreamExpiresAt
 
-            if (stateChanged || urlChanged) {
+            if (stateChanged || urlChanged || expiryChanged) {
                 Log.d(tag, "State/URL change detected in sync response! New State: $appState, URL: $streamUrl")
                 lastState = appState
                 lastUrl = streamUrl
-                onStateChanged(appState, streamUrl, accessKeyRevoked)
+                lastStreamEventId = streamEventId
+                lastStreamExpiresAt = streamExpiresAt
+                onStateChanged(appState, streamUrl, accessKeyRevoked, fleetState, fleetStreamUrl, eventTitle, streamEventId, streamStartedAt, streamExpiresAt)
             }
         } catch (e: Exception) {
             Log.e(tag, "Failed to parse data bridge payload: ${e.message}")

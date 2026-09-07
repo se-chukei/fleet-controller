@@ -10,6 +10,35 @@ AI coding agents and developers should review this document before proposing arc
 
 ---
 
+# ADR-019: Canonical Fleet State Terminology and Persistence File
+
+Date:
+2026-09-07
+
+Status:
+Accepted
+
+## Decision
+
+Use `state` for the operational state machine and desired fleet directive:
+
+- `STANDBY`, `STREAM`, and `PLAYBACK` are operational states.
+- The Data Bridge owns the desired global fleet state.
+- `ONLINE`, `WARNING`, and `OFFLINE` are health statuses, not operational states.
+- `LIVE` and `ENDED` describe stream lifecycle when that distinction is available.
+
+Persist the Data Bridge's canonical global fleet state in `dashboard/fleet_state.json`.
+
+## Reason
+
+`fleet_state.json` clearly identifies the file as the source of truth for fleet state while avoiding the ambiguity between UI state and device health status. The previous names, `dashboard_state.json` and `fleetstatus.json`, were used inconsistently across the bridge and Vite proxy.
+
+## Consequences
+
+The bridge, Vite development proxy, and dashboard comments must use `fleet_state.json`. The filename change does not alter the JSON contract or the ownership boundary: the Data Bridge remains authoritative, and Android devices continue to receive desired state through polling.
+
+---
+
 # ADR-001: Use a Monorepo Structure
 
 Date:
@@ -521,3 +550,66 @@ Primary target platform is **Google TV Streamer**.
 
 Support for built-in Android TV (television sets) is Later / Exploratory.  
 USB playback may be limited or omitted on built-in TVs.
+
+---
+
+# ADR-017: Current Client Is an Enhanced Prototype With Operational Resilience
+
+Date: 2026-09-04  
+Status: Accepted
+
+## Decision
+
+The current Android client in this repository is intentionally more resilient than the minimal Phase 3/4 prototype target. It includes operational safeguards such as:
+
+- `BootReceiver` boot-start behavior
+- `MainActivity` state-driven playback switching
+- `DataBridgePoller` jittered HTTP sync and telemetry uplink
+- `ExoPlayer` + `VLC` engine fallback logic
+- stall detection, soft recovery, and standby fallback
+- thermal / freeze reporting to the Data Bridge
+
+## Reason
+
+The prototype has moved beyond a simple proof-of-concept and is being used to validate real hardware behavior under constrained operating conditions. These safeguards reduce the risk of black screens, decoder deadlocks, and repeated stall loops during live testing.
+
+## Important Caveat
+
+This operational resilience layer does not replace the prototype target specification. The following remain the acceptance criteria for the October gate:
+
+- zero-touch boot behavior
+- full-screen playback
+- `STANDBY` ↔ `STREAM` switching inside one polling cycle
+- live indicator compliance
+- `MEDIA_PLAYBACK` foreground service semantics for the target build
+
+The resilience work should be treated as implementation detail and support, not as a relaxation of the target behavior.
+
+## Alternatives Considered
+
+### Minimal bare-bones prototype only
+
+Rejected because early field testing showed that a basic implementation is too fragile for sustained Google TV use without recovery logic.
+
+### Replacing the target behavior with the current implementation details
+
+Rejected because the repository still needs to satisfy the original acceptance criteria and architecture-level constraints, especially around foreground service type and the red-dot live indicator.
+
+---
+
+# ADR-018: Foreground Service Type Must Match the Prototype Target
+
+Date: 2026-09-04  
+Status: Accepted
+
+## Decision
+
+The operational prototype may currently start a `Service` and a wake lock, but the target behavior remains `FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK` and the OS-required persistent notification semantics.
+
+## Reason
+
+The acceptance target explicitly requires a media playback foreground service. This is a non-negotiable platform requirement for Android TV playback and should remain the compliance target even when the repository contains additional current-state logic.
+
+## Implementation Note
+
+The repository currently declares a foreground service as `dataSync` in the manifest, which is a useful interim implementation detail but does not satisfy the strict target requirement without review and adjustment.

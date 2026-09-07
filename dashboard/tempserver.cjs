@@ -23,15 +23,106 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'telemetry.html'));
 });
 
-const STATE_FILE = path.join(__dirname, 'dashboard_state.json');
+const STATE_FILE = path.join(__dirname, 'fleet_state.json');
+const LOCALIZATION_FILE = path.join(__dirname, 'localization.csv');
+const SUPPORTED_LOCALES = ['en', 'ja'];
+let localizationCatalog = {};
+
+function parseLocalizationCsv(csv) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+
+  for (let i = 0; i < csv.length; i += 1) {
+    const char = csv[i];
+    const next = csv[i + 1];
+    if (char === '"' && quoted && next === '"') {
+      field += '"';
+      i += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === ',' && !quoted) {
+      row.push(field);
+      field = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && next === '\n') i += 1;
+      row.push(field);
+      if (row.some(value => value.trim())) rows.push(row);
+      row = [];
+      field = '';
+    } else {
+      field += char;
+    }
+  }
+
+  if (field || row.length) {
+    row.push(field);
+    if (row.some(value => value.trim())) rows.push(row);
+  }
+
+  const headers = rows.shift() || [];
+  const localeIndexes = Object.fromEntries(
+    SUPPORTED_LOCALES.map(locale => [locale, headers.indexOf(locale)])
+  );
+
+  return Object.fromEntries(rows
+    .filter(row => row[0]?.trim())
+    .map(row => [row[0].trim(), Object.fromEntries(
+      SUPPORTED_LOCALES
+        .filter(locale => localeIndexes[locale] >= 0)
+        .map(locale => [locale, row[localeIndexes[locale]] || ''])
+    )]));
+}
+
+function quoteCsvField(value) {
+  const text = String(value ?? '');
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function serializeLocalizationCsv(catalog) {
+  const keys = Object.keys(catalog).sort();
+  return [
+    ['key', ...SUPPORTED_LOCALES].join(','),
+    ...keys.map(key => [key, ...SUPPORTED_LOCALES.map(locale => quoteCsvField(catalog[key]?.[locale] || ''))].join(','))
+  ].join('\n') + '\n';
+}
+
+function loadLocalizationCatalog() {
+  try {
+    if (fs.existsSync(LOCALIZATION_FILE)) {
+      localizationCatalog = parseLocalizationCsv(fs.readFileSync(LOCALIZATION_FILE, 'utf8'));
+    }
+  } catch (err) {
+    console.error('Failed to load localization catalog:', err.message);
+  }
+}
+
+function saveLocalizationCatalog() {
+  const tempFile = LOCALIZATION_FILE + '.tmp';
+  fs.writeFileSync(tempFile, serializeLocalizationCsv(localizationCatalog), 'utf8');
+  fs.renameSync(tempFile, LOCALIZATION_FILE);
+}
+
+// Map of registered/connected devices: deviceId -> deviceObject
+const endpointDevices = new Map();
 
 // Global Fleet State Configuration
 let globalFleetState = {
     appState: 'STANDBY',
     activeStreamUrl: '',
     standbyStreamUrl: '',
-    streamUrl: ''
+  streamUrl: '',
+  streamEventId: '',
+  streamStartedAt: null,
+  streamExpiresAt: null
 };
+
+const configuredStreamDurationMinutes = Number(process.env.TVU_STREAM_DURATION_MINUTES || 180);
+const TVU_STREAM_DURATION_MINUTES = Number.isFinite(configuredStreamDurationMinutes) && configuredStreamDurationMinutes > 0
+  ? configuredStreamDurationMinutes
+  : 180;
+const TVU_STREAM_DURATION_MS = TVU_STREAM_DURATION_MINUTES * 60 * 1000;
 
 let knownActiveStreams = new Set();
 let knownStandbyStreams = new Set();
@@ -62,6 +153,11 @@ function loadPersistedState() {
             if (Array.isArray(data.knownStandbyStreams)) {
                 knownStandbyStreams = new Set(data.knownStandbyStreams);
             }
+            if (Array.isArray(data.devices)) {
+              data.devices.forEach(device => {
+                if (device && device.deviceId) endpointDevices.set(device.deviceId, device);
+              });
+            }
             // Backward compatibility for legacy single array format
             if (Array.isArray(data.knownStreams)) {
                 data.knownStreams.forEach(url => knownActiveStreams.add(url));
@@ -84,7 +180,8 @@ function savePersistedState() {
             const data = {
                 globalFleetState,
                 knownActiveStreams: Array.from(knownActiveStreams),
-                knownStandbyStreams: Array.from(knownStandbyStreams)
+              knownStandbyStreams: Array.from(knownStandbyStreams),
+              devices: Array.from(endpointDevices.values())
             };
             const tempFile = STATE_FILE + '.tmp';
             fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf8');
@@ -164,11 +261,19 @@ function formatUptime(seconds) {
     return `${sec}s`;
 }
 
+  function getHealthStatus(appState, status, consecutiveStalls, consecutivePlaybackErrors, consecutiveNetworkFailures) {
+    if (consecutivePlaybackErrors >= 3 || (appState === 'STREAM' && consecutiveStalls >= 3)) {
+      return 'CRITICAL';
+    }
+    if (consecutiveStalls >= 1 || consecutiveNetworkFailures >= 3 || status === 'WARNING') {
+      return 'WARN';
+    }
+    return 'HEALTHY';
+  }
+
 // Load state immediately on startup
 loadPersistedState();
-
-// Map of registered/connected devices: deviceId -> deviceObject
-const endpointDevices = new Map();
+loadLocalizationCatalog();
 
 // SSE Clients List
 const sseClients = new Set();
@@ -212,6 +317,35 @@ app.get('/events', (req, res) => {
 // -----------------------------------------------------------------------------
 app.get('/api/state', (req, res) => {
     res.json({ ...globalFleetState, ...getKnownStreamsPayload() });
+});
+
+app.get('/api/localization', (req, res) => {
+  res.json({ locales: SUPPORTED_LOCALES, translations: localizationCatalog });
+});
+
+app.get('/api/localization.csv', (req, res) => {
+  res.type('text/csv').send(serializeLocalizationCsv(localizationCatalog));
+});
+
+app.put('/api/localization', (req, res) => {
+  const { key, locale, value } = req.body || {};
+  if (!key || !SUPPORTED_LOCALES.includes(locale) || typeof value !== 'string') {
+    return res.status(400).json({ error: 'key, locale, and string value are required' });
+  }
+
+  localizationCatalog[key] = { ...(localizationCatalog[key] || {}), [locale]: value };
+  saveLocalizationCatalog();
+  res.json({ status: 'ok', translations: localizationCatalog });
+});
+
+app.post('/api/localization/import', (req, res) => {
+  if (typeof req.body?.csv !== 'string') {
+    return res.status(400).json({ error: 'csv string is required' });
+  }
+
+  localizationCatalog = parseLocalizationCsv(req.body.csv);
+  saveLocalizationCatalog();
+  res.json({ status: 'ok', translations: localizationCatalog });
 });
 
 // -----------------------------------------------------------------------------
@@ -384,6 +518,20 @@ app.post('/api/webhook/tvu', (req, res) => {
       ? globalFleetState.activeStreamUrl 
       : globalFleetState.standbyStreamUrl;
 
+    if (targetAppState === 'STREAM') {
+      const startTimeMs = Number(tvuEpochMs) || receivedAt.getTime();
+      globalFleetState.streamEventId = String(
+        payload.mediaObjectId || payload.sourceObjectId || startTimeMs
+      );
+      globalFleetState.streamStartedAt = startTimeMs;
+      globalFleetState.streamExpiresAt = startTimeMs + TVU_STREAM_DURATION_MS;
+      console.log(`[ACTION] STREAM expiry set to ${new Date(globalFleetState.streamExpiresAt).toISOString()} (${TVU_STREAM_DURATION_MINUTES} minutes)`);
+    } else {
+      globalFleetState.streamEventId = '';
+      globalFleetState.streamStartedAt = null;
+      globalFleetState.streamExpiresAt = null;
+    }
+
     // Propagate mode change to all connected devices that are not overridden
     endpointDevices.forEach((dev, id) => {
       if (!dev.isOverridden) {
@@ -478,6 +626,7 @@ app.post('/api/device/update', (req, res) => {
         ...existing,
         deviceId,
         status: targetAppState,
+      appState: targetAppState,
         streamUrl: targetStreamUrl,
         isOverridden: true,
         lastSeen: Date.now()
@@ -502,6 +651,7 @@ app.post('/api/device/clear-override', (req, res) => {
         ...existing,
         isOverridden: false,
         status: globalFleetState.appState,
+      appState: globalFleetState.appState,
         streamUrl: globalFleetState.streamUrl,
         lastSeen: Date.now()
     };
@@ -530,7 +680,19 @@ app.post('/api/sync', (req, res) => {
     // Detect if client initiated a local override (e.g., switched to PLAYBACK via USB or manually exited stream)
     const isLocalPlayback = payload.appState === 'PLAYBACK';
     const effectiveIsOverridden = isOverridden || isLocalPlayback;
-    const effectiveStatus = effectiveIsOverridden ? (payload.appState || existingDev.status) : globalFleetState.appState;
+    const effectiveStatus = isOverridden
+      ? existingDev.status
+      : (isLocalPlayback ? 'PLAYBACK' : globalFleetState.appState);
+    const consecutiveStalls = Number(payload.consecutiveStalls ?? existingDev.consecutiveStalls ?? 0) || 0;
+    const consecutivePlaybackErrors = Number(payload.consecutivePlaybackErrors ?? existingDev.consecutivePlaybackErrors ?? 0) || 0;
+    const consecutiveNetworkFailures = Number(payload.consecutiveNetworkFailures ?? existingDev.consecutiveNetworkFailures ?? 0) || 0;
+    const healthStatus = getHealthStatus(
+      payload.appState || effectiveStatus,
+      payload.status || existingDev.telemetryStatus,
+      consecutiveStalls,
+      consecutivePlaybackErrors,
+      consecutiveNetworkFailures
+    );
 
     const updatedDev = {
         ...existingDev,
@@ -544,6 +706,11 @@ app.post('/api/sync', (req, res) => {
         streamResolution: payload.streamResolution !== undefined ? payload.streamResolution : (existingDev.streamResolution || 'N/A'),
         temp: payload.temp !== undefined ? payload.temp : (existingDev.temp || 0),
         cpu: payload.cpu !== undefined ? payload.cpu : (existingDev.cpu || 0),
+        consecutiveStalls,
+        consecutivePlaybackErrors,
+        consecutiveNetworkFailures,
+        healthStatus,
+        appState: effectiveStatus,
         uptime: payload.uptimeSeconds != null
             ? formatUptime(payload.uptimeSeconds)
             : (existingDev.uptime || '-'),
@@ -556,6 +723,7 @@ app.post('/api/sync', (req, res) => {
     };
 
     endpointDevices.set(deviceId, updatedDev);
+    savePersistedState();
     broadcastSSE({ type: 'device_update', device: updatedDev, ...getKnownStreamsPayload() });
 
     res.json({
@@ -563,6 +731,12 @@ app.post('/api/sync', (req, res) => {
         appState: updatedDev.status,
         streamUrl: updatedDev.streamUrl,
         isOverridden: updatedDev.isOverridden,
+      fleetAppState: globalFleetState.appState,
+      fleetStreamUrl: globalFleetState.activeStreamUrl,
+      streamEventId: globalFleetState.streamEventId,
+      streamStartedAt: globalFleetState.streamStartedAt,
+      streamExpiresAt: globalFleetState.streamExpiresAt,
+      eventTitle: globalFleetState.eventTitle || "",
         timestamp: Math.floor(Date.now() / 1000)
     });
 });

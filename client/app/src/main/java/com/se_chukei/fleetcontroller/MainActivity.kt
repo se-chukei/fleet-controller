@@ -2,12 +2,19 @@ package com.se_chukei.fleetcontroller
 
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.media3.common.C
@@ -64,6 +71,13 @@ class MainActivity : AppCompatActivity() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var targetVolume = 100
     private var blackOverlay: View? = null
+    private var liveIndicatorContainer: LinearLayout? = null
+    private var liveIndicatorDot: View? = null
+    private var liveIndicatorText: TextView? = null
+    private var liveIndicatorHideRunnable: Runnable? = null
+    private var liveEventTitle: String = ""
+    private var liveStreamAvailable: Boolean = false
+    private var liveStreamAvailableUrl: String? = null
 
     private val playerMutex = Mutex()
     private val isTransitioning = AtomicBoolean(false)
@@ -85,6 +99,9 @@ class MainActivity : AppCompatActivity() {
 
     private var currentStreamUrl: String? = null
     private var currentState: State = State.STANDBY
+    private var streamEventId: String? = null
+    private var streamStartedAt: Long? = null
+    private var streamExpiresAt: Long? = null
     private var fleetServiceIntent: Intent? = null
 
     private var lastValidStandbyUrl: String? = null
@@ -119,6 +136,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        getPreferences(MODE_PRIVATE).let { preferences ->
+            streamEventId = preferences.getString("stream_event_id", null)
+            streamStartedAt = preferences.getLong("stream_started_at", 0L).takeIf { it > 0L }
+            streamExpiresAt = preferences.getLong("stream_expires_at", 0L).takeIf { it > 0L }
+        }
+
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         suppressBluetoothDiscovery()
@@ -143,6 +166,8 @@ class MainActivity : AppCompatActivity() {
             visibility = View.VISIBLE
             bringToFront()
         }
+        attachLiveIndicator()
+        applyLiveIndicatorForState(currentState, currentStreamUrl)
         setPlayerVolume(0)
 
         val args = ArrayList<String>().apply {
@@ -253,17 +278,40 @@ class MainActivity : AppCompatActivity() {
                     precomputedDroppedFrames = droppedFrames,
                     precomputedHasError = hasPlayerError,
                     precomputedStreamResolution = calculatedResolution,
+                    consecutiveStalls = consecutiveStalls,
+                    consecutivePlaybackErrors = consecutivePlaybackErrors,
+                    consecutiveNetworkFailures = consecutiveNetworkFailures,
                     mainDisplayName = mainDisplayName
                 )
             },
-            onStateChanged = { appStateString, newStreamUrl, accessKeyRevoked ->
+            onStateChanged = { appStateString, newStreamUrl, accessKeyRevoked, fleetStateString, fleetStreamUrl, eventTitle, eventId, startedAt, expiresAt ->
                 consecutiveNetworkFailures = 0
+                streamEventId = eventId.takeIf { it.isNotBlank() }
+                streamStartedAt = startedAt
+                streamExpiresAt = expiresAt
+                getPreferences(MODE_PRIVATE).edit()
+                    .putString("stream_event_id", streamEventId)
+                    .putLong("stream_started_at", streamStartedAt ?: 0L)
+                    .putLong("stream_expires_at", streamExpiresAt ?: 0L)
+                    .apply()
                 Log.i("MainActivity", "Poller response → state=$appStateString url=$newStreamUrl revoked=$accessKeyRevoked")
 
                 val newState = when (appStateString.uppercase()) {
                     "STREAM" -> State.STREAM
                     "PLAYBACK" -> State.PLAYBACK
                     else -> State.STANDBY
+                }
+
+                val fleetIsStreaming = fleetStateString.uppercase() == "STREAM"
+                val deviceHasNotJoined = newState != State.STREAM
+                liveStreamAvailable = fleetIsStreaming && deviceHasNotJoined
+                liveStreamAvailableUrl = if (liveStreamAvailable) {
+                    fleetStreamUrl.takeIf { it.isNotBlank() } ?: newStreamUrl
+                } else {
+                    null
+                }
+                if (eventTitle.isNotBlank()) {
+                    liveEventTitle = eventTitle
                 }
 
                 if (accessKeyRevoked) {
@@ -275,6 +323,22 @@ class MainActivity : AppCompatActivity() {
             onNetworkFailure = {
                 consecutiveNetworkFailures++
                 Log.w("MainActivity", "DataBridgePoller network failure (count=$consecutiveNetworkFailures)")
+                if (consecutiveNetworkFailures >= 3 &&
+                    currentState == State.STREAM &&
+                    streamExpiresAt != null &&
+                    System.currentTimeMillis() >= streamExpiresAt!!
+                ) {
+                    Log.w("MainActivity", "Bridge outage stream expiry reached; falling back to STANDBY")
+                    streamEventId = null
+                    streamStartedAt = null
+                    streamExpiresAt = null
+                    getPreferences(MODE_PRIVATE).edit()
+                        .remove("stream_event_id")
+                        .remove("stream_started_at")
+                        .remove("stream_expires_at")
+                        .apply()
+                    updateState(State.STANDBY, lastValidStandbyUrl, isRecovery = true)
+                }
             }
         ).also { it.startPolling() }
     }
@@ -382,6 +446,140 @@ class MainActivity : AppCompatActivity() {
     private fun useVlcFor(url: String): Boolean {
         val u = url.lowercase()
         return u.startsWith("rtmp://") || u.startsWith("rtsp://")
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun attachLiveIndicator() {
+        val root = (findViewById<View>(android.R.id.content) as? ViewGroup) ?: return
+
+        val indicator = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            alpha = 1f
+            isClickable = false
+            isFocusable = false
+            setPadding(0, dpToPx(4), dpToPx(8), 0)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.START or Gravity.BOTTOM
+            ).apply {
+                setMargins(dpToPx(4), 0, 0, dpToPx(4))
+            }
+        }
+
+        liveIndicatorDot = View(this).apply {
+            val size = dpToPx(12)
+            layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                marginEnd = dpToPx(8)
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.RED)
+                setSize(size, size)
+            }
+        }
+
+        liveIndicatorText = TextView(this).apply {
+            text = getString(R.string.stream_is_live, liveEventTitle)
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            gravity = Gravity.CENTER_VERTICAL
+            setShadowLayer(2f, 1f, 1f, Color.BLACK)
+            includeFontPadding = false
+            setPadding(0, 0, 0, 0)
+        }
+
+        indicator.addView(liveIndicatorDot)
+        indicator.addView(liveIndicatorText)
+        root.addView(indicator)
+        liveIndicatorContainer = indicator
+        hideLiveIndicator(false)
+    }
+
+    private fun showLiveIndicator(title: String = getString(R.string.live_event_title)) {
+        if (liveIndicatorContainer == null || liveIndicatorText == null) return
+
+        liveEventTitle = title.ifBlank { getString(R.string.live_event_title) }
+        liveIndicatorText?.text = getString(R.string.stream_is_live, liveEventTitle)
+        liveIndicatorText?.visibility = View.VISIBLE
+        liveIndicatorText?.alpha = 1f
+        liveIndicatorContainer?.visibility = View.VISIBLE
+        liveIndicatorContainer?.animate()?.cancel()
+        liveIndicatorContainer?.alpha = 1f
+
+        liveIndicatorHideRunnable?.let { liveIndicatorContainer?.removeCallbacks(it) }
+        liveIndicatorHideRunnable = Runnable {
+            liveIndicatorText?.animate()
+                ?.alpha(0f)
+                ?.setDuration(450)
+                ?.withEndAction {
+                    liveIndicatorText?.visibility = View.INVISIBLE
+                }
+                ?.start()
+        }
+        liveIndicatorContainer?.postDelayed(liveIndicatorHideRunnable!!, 9000L)
+    }
+
+    private fun hideLiveIndicator(animate: Boolean = true) {
+        liveIndicatorHideRunnable?.let { liveIndicatorContainer?.removeCallbacks(it) }
+        liveIndicatorHideRunnable = null
+
+        liveIndicatorText?.animate()?.cancel()
+        liveIndicatorContainer?.animate()?.cancel()
+
+        if (animate) {
+            liveIndicatorText?.animate()?.alpha(0f)?.setDuration(200)?.withEndAction {
+                liveIndicatorText?.visibility = View.INVISIBLE
+            }?.start()
+            liveIndicatorContainer?.alpha = 1f
+        } else {
+            liveIndicatorText?.visibility = View.INVISIBLE
+            liveIndicatorContainer?.visibility = View.GONE
+        }
+    }
+
+    private fun applyLiveIndicatorForState(state: State, url: String?) {
+        if (state == State.STREAM) {
+            liveStreamAvailable = false
+            liveStreamAvailableUrl = null
+            hideLiveIndicator(false)
+            return
+        }
+
+        if ((state == State.STANDBY || state == State.PLAYBACK) && liveStreamAvailable) {
+            val eventTitle = if (liveEventTitle.isNotBlank()) {
+                liveEventTitle
+            } else if (!liveStreamAvailableUrl.isNullOrBlank()) {
+                parseLiveEventTitle(liveStreamAvailableUrl!!)
+            } else if (!url.isNullOrBlank()) {
+                parseLiveEventTitle(url)
+            } else {
+                getString(R.string.live_event_title)
+            }
+            showLiveIndicator(eventTitle)
+            return
+        }
+
+        hideLiveIndicator(false)
+    }
+
+    private fun parseLiveEventTitle(url: String): String {
+        return try {
+            val cleaned = url.replace("\\", "/")
+            val lastSegment = cleaned.substringAfterLast('/').substringBefore('?')
+            if (lastSegment.isNotBlank() && lastSegment != ".") {
+                lastSegment
+            } else {
+                "Live Event"
+            }
+        } catch (_: Exception) {
+            "Live Event"
+        }
     }
 
     private fun forceStopImmediate() {
@@ -531,6 +729,13 @@ class MainActivity : AppCompatActivity() {
                 consecutivePlaybackErrors = 0
                 consecutiveStalls = 0
             }
+
+            if (currentState == State.STREAM) {
+                liveStreamAvailable = false
+                liveStreamAvailableUrl = null
+            }
+
+            applyLiveIndicatorForState(currentState, finalUrl)
 
             Log.i("MainActivity", "State applied → $currentState | url=$currentStreamUrl")
 

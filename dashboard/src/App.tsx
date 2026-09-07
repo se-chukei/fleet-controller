@@ -12,6 +12,7 @@ import TroubleshootPanel from './components/TroubleshootPanel';
 import OTAManager from './components/OTAManager';
 import ProvisioningLab from './components/ProvisioningLab';
 import TVUWebhookSimulator from './components/TVUWebhookSimulator';
+import LocalizationPanel from './components/LocalizationPanel';
 import { useTranslation } from './context/LanguageContext';
 import { Network, Server, Menu, ArrowDownCircle, AlertCircle, Sparkles, Flame, Check, Shield, Globe, RotateCcw, ExternalLink, Settings2, Database } from 'lucide-react';
 import { sourceBase64 } from './source-b64';
@@ -20,6 +21,7 @@ export default function App() {
   const { locale, setLocale, t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'ota' | 'provisioning'>('dashboard');
   const [showLogoMenu, setShowLogoMenu] = useState(false);
+  const [showLocalizationPanel, setShowLocalizationPanel] = useState(false);
 
   const urlParams = new URLSearchParams(window.location.search);
   const [isAdmin, setIsAdmin] = useState(urlParams.get('admin') !== 'false');
@@ -625,7 +627,7 @@ export default function App() {
     );
   };
 
-  // Function to send state updates back to the backend/endpoint to persist fleetstatus.json
+  // Function to send state updates back to the backend/endpoint to persist fleet_state.json
   const updateBackendState = async (newState: OperationalState, feedOnline?: boolean) => {
     try {
       const response = await fetch('/api/state', {
@@ -652,7 +654,7 @@ export default function App() {
     const nextState = !primaryFeedOnline;
     setPrimaryFeedOnline(nextState);
 
-    // Write back the state change to fleetstatus.json via the endpoint
+    // Write back the state change to fleet_state.json via the endpoint
     updateBackendState(globalFleetState, nextState);
 
     setEndpoints((prev) => {
@@ -710,7 +712,7 @@ export default function App() {
     const nextState = event === 'stream_start' ? 'STREAM' : 'STANDBY';
     setGlobalFleetState(nextState);
 
-    // Write back the state change to fleetstatus.json via the endpoint
+    // Write back the state change to fleet_state.json via the endpoint
     updateBackendState(nextState, primaryFeedOnline);
 
     setEndpoints((prev) => {
@@ -892,6 +894,21 @@ export default function App() {
                         {debugMode ? 'ACTIVE' : 'OFF'}
                       </span>
                     </button>
+
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setShowLogoMenu(false);
+                          setShowLocalizationPanel(true);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-sans text-slate-300 hover:bg-slate-900/50 rounded-lg transition-colors flex items-center justify-between group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-indigo-400" />
+                          {locale === 'ja' ? 'ローカライズ設定' : 'Localization Config'}
+                        </span>
+                      </button>
+                    )}
 
                     {isAdmin && (
                       <button
@@ -1176,6 +1193,10 @@ export default function App() {
           onUpdateNode={handleUpdateNode}
           onClose={() => setShowDebugConsole(false)}
         />
+      )}
+
+      {showLocalizationPanel && (
+        <LocalizationPanel onClose={() => setShowLocalizationPanel(false)} />
       )}
 
     </div>

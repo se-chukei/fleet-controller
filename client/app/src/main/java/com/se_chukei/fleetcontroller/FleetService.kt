@@ -1,12 +1,17 @@
 package com.se_chukei.fleetcontroller
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -20,6 +25,8 @@ class FleetService : Service() {
     private companion object {
         const val TAG = "FleetService"
         const val STREAM_TIMEOUT_MS = 10000L // 10s watchdog timeout for stalled streams
+        const val NOTIFICATION_ID = 1001
+        const val CHANNEL_ID = "fleet_controller_media"
     }
 
     private var exoPlayer: ExoPlayer? = null
@@ -32,19 +39,57 @@ class FleetService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "FleetService created")
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, buildNotification("STANDBY"))
         suppressBluetoothDiscovery()
         initializePlayers()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val state = intent?.getStringExtra("STATE")
-        val url = intent?.getStringExtra("URL")
+        val state = intent?.getStringExtra("STATE") ?: "STANDBY"
+        val url = intent?.getStringExtra("STREAM_URL") ?: intent?.getStringExtra("URL") ?: ""
 
-        if (state != null && url != null) {
+        updateNotification(state)
+
+        if (url.isNotBlank()) {
             executeCommand(state, url)
         }
 
         return START_STICKY
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Fleet Controller Playback",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Fleet Controller media playback status"
+                setSound(null, null)
+                enableVibration(false)
+            }
+
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(state: String): Notification {
+        val label = state.uppercase()
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Fleet Controller")
+            .setContentText("State: $label")
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun updateNotification(state: String) {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID, buildNotification(state))
     }
 
     private fun suppressBluetoothDiscovery() {
@@ -164,6 +209,7 @@ class FleetService : Service() {
     }
 
     override fun onDestroy() {
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stopPlayback()
         exoPlayer?.release()
         exoPlayer = null

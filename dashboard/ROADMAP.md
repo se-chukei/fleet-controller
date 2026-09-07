@@ -1,6 +1,22 @@
 # Fleet-Controller Integration & Client APK Development Roadmap
 
-This guide provides a comprehensive, step-by-step roadmap to go from the current **fleet-controller web dashboard** to a fully running, physical hardware test environment.
+This guide provides the current working roadmap for the FleetController hardware prototype. It reflects the state of the repository as of 2026-09, not a clean-sheet greenfield build.
+
+---
+
+## Snapshot: Current Repository State
+
+The repository already contains the core Android client implementation for the prototype, including:
+
+- `BootReceiver` auto-start behavior on boot
+- `MainActivity` state-driven playback switching
+- `FleetService` and foreground-service lifecycle support
+- `DataBridgePoller` for state sync and telemetry
+- `TelemetryCollector` for device metrics and dashboard visibility
+- `ExoPlayer` + `VLC` dual-engine recovery logic
+- watchdog and stall recovery logic for real hardware operation
+
+This means the project is no longer in a “bootstrap from scratch” state. The remaining work is primarily refinement, compliance alignment, and finishing the target acceptance items rather than creating the entire application from zero.
 
 ---
 
@@ -139,6 +155,24 @@ To protect decoders against hardware overheating or C++ native crashes (libvlc t
 2. If VLC stops rendering frames or reports `MediaPlayer.Event.EncounteredError`:
    - Attempt 1: Re-initialize the `MediaPlayer` instance in-memory.
    - Attempt 2 (Fatal lockup): Call `Runtime.getRuntime().exec("reboot")` (requires system/root appliance permissions) or force-quit the process to trigger a clean Android OS relaunch on boot.
+
+### Current codebase status
+
+The repo already includes a more mature version of the watchdog and recovery flow than the original step-by-step example. The implemented logic in `MainActivity` includes soft recovery, stall detection, fallback-to-standby, freeze reporting, and keepalive restarts. This is a strong foundation for the October gate but should still be validated against the strict minimal acceptance criteria in `CURRENT_TARGET_BEHAVIOR.md`.
+
+---
+
+## ✅ Remaining Acceptance Gaps to Close
+
+The current implementation is not yet fully aligned with the strict target requirements. At minimum, the project should still finish or verify the following before treating the prototype as production-ready:
+
+- `MEDIA_PLAYBACK` foreground service semantics and notification behavior
+- minimal red-dot + temporary live text indicator on standby/live transitions
+- zero-touch canonical behavior with explicit full-screen startup path
+- USB / local `PLAYBACK` handling verification, if required for the October target
+- dashboard and Data Bridge enforcement of offline + thermal + warning states
+
+The codebase is advanced enough that these are now refinement and compliance tasks, not foundational implementation tasks.
 
 ---
 

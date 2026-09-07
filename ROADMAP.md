@@ -86,6 +86,22 @@ Built-in Android TV (non-Streamer) support is **Later / Exploratory**.
 - Unified repository structure.
 - Architecture, system design, AI guidelines, decisions documents.
 
+## Security Engineering Gate (Required Before October Release)
+
+Security work follows a repeatable Scan -> Fix -> Verify cycle and remains within the existing component boundaries and prototype specifications.
+
+- Run npm audit against the committed dashboard lockfile and Gradle/Android dependency checks before each release candidate.
+- Keep dependency versions and lockfiles reproducible; remediate known vulnerabilities without forcing major-version upgrades unless compatibility is explicitly tested and approved.
+- Keep credentials out of source, logs, build artifacts, and Git history. Store runtime credentials in environment or deployment secret storage, rotate any exposed TVU or webhook credentials, and remove historical secret material when discovered.
+- Run Gitleaks and Trivy (vulnerability, secret, and misconfiguration scanners) against the repository and retain redacted reports as release evidence.
+- Require TypeScript checks, Android lint, unit tests, and production builds after security dependency changes.
+- Validate inbound dashboard, webhook, and Data Bridge inputs for size, type, URL scheme, and allowed destination before state or playback changes. Preserve the Data Bridge -> State Engine -> Feature Registry -> playback architecture.
+- Treat cleartext Data Bridge polling as a documented prototype exception only where required by the authoritative target behavior. Do not broaden cleartext access to unrelated endpoints; use the Tailscale control plane and encrypted transport for production control traffic when the specification permits it.
+- Review Android exported components, backup behavior, foreground-service permissions, and least-privilege network/storage permissions as part of Android release validation.
+- Do not use `npm audit fix --force` or equivalent automatic major upgrades without regression testing against the October acceptance criteria.
+
+**Completion criteria:** No unreviewed High/Critical findings; Medium findings have an owner, mitigation, and documented compatibility decision; no active credentials remain in the repository or its reachable history; all scanners and component checks pass or have an explicitly accepted exception.
+
 ---
 
 # Phase 1 — Data Bridge Core
@@ -261,6 +277,7 @@ Bricking a device is **not** an acceptable failure mode.
 | Real Tailscale IP                 | Must                  |
 | Red-dot live indicator            | Must                  |
 | Thermal pause + on-screen warning | Must                  |
+| Security scan/fix/verify gate    | Must                  |
 | External alert output (GPIO/etc.) | Nice-to-have soon     |
 | Built-in Android TV support       | Later / Exploratory   |
 | Runtime module suite switching    | Later                 |

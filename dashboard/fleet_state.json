@@ -1,0 +1,73 @@
+{
+  "globalFleetState": {
+    "appState": "STREAM",
+    "activeStreamUrl": "https://d2ibp6n2lenjxm.cloudfront.net/hls/dvr/ipblite06/5188404197617_livestream02_2000/chunklist_DVR.m3u8",
+    "standbyStreamUrl": "https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8",
+    "streamUrl": "https://d2ibp6n2lenjxm.cloudfront.net/hls/dvr/ipblite06/5188404197617_livestream02_2000/chunklist_DVR.m3u8",
+    "eventTitle": "webhook test",
+    "streamEventId": "probe-media",
+    "streamStartedAt": 1788670038587,
+    "streamExpiresAt": 1788680838587
+  },
+  "knownActiveStreams": [
+    "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    "https://playertest.longtailvideo.com/adaptive/wowzaid3/playlist.m3u8",
+    "https://test-streams.mux.dev/test_001/stream.m3u8",
+    "https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8",
+    "https://devstreaming-cdn.apple.com/videos/streaming/examples/adv_dv_atmos/main.m3u8",
+    "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_adv_example_hevc/master.m3u8",
+    "https://d2ibp6n2lenjxm.cloudfront.net/hls/dvr/ipblite06/5188404197617_livestream02_2000/chunklist_DVR.m3u8",
+    "https://llhls-live.akamaized.net/exp=1787969959~acl=%2F1a8a77f0-ad27-41d3-94d4-d46a0da05a32_llhls%2F%2A~hmac=034e58018d0d844ad7c6995b999e4fbe2d4e3c722213879f642268676d9f2f03/1a8a77f0-ad27-41d3-94d4-d46a0da05a32_llhls/avc/720p/chunklist.m3u8?_HLS_msn=890&_HLS_part=2&_HLS_skip=YES"
+  ],
+  "knownStandbyStreams": [
+    "https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8",
+    "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_adv_example_hevc/master.m3u8",
+    "https://devstreaming-cdn.apple.com/videos/streaming/examples/adv_dv_atmos/main.m3u8",
+    "https://d2ibp6n2lenjxm.cloudfront.net/hls/dvr/ipblite06/5188404197617_livestream02_2000/chunklist_DVR.m3u8",
+    "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+  ],
+  "devices": [
+    {
+      "deviceId": "1afff7603b1e02a9",
+      "nodeName": "テスト拠点1",
+      "deviceName": "Kitting TV",
+      "nodeIp": "100.111.90.103",
+      "status": "STREAM",
+      "bitrate": "-",
+      "temp": "-",
+      "streamResolution": "-",
+      "cpu": "-",
+      "streamUrl": "https://d2ibp6n2lenjxm.cloudfront.net/hls/dvr/ipblite06/5188404197617_livestream02_2000/chunklist_DVR.m3u8",
+      "powerState": "AC",
+      "uptimeSeconds": 14386,
+      "appState": "STANDBY",
+      "activePlayer": "PLAYER_A",
+      "playerViewType": "SurfaceView",
+      "troubleshootActive": false,
+      "versionCode": 1,
+      "lastSeenMs": 1788682964910,
+      "usbAttached": false,
+      "usbDebounceCountdown": null,
+      "watchdogStep": null,
+      "targetStreamUri": "https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8",
+      "streamId": "venue_stream_1afff7603b1e02a9",
+      "isDormant": false,
+      "isDecommissioned": false,
+      "isOverridden": false,
+      "accessKeyRevoked": false,
+      "droppedFrames": 0,
+      "consecutiveStalls": 0,
+      "consecutivePlaybackErrors": 0,
+      "consecutiveNetworkFailures": 0,
+      "healthStatus": "HEALTHY",
+      "uptime": "-",
+      "lastSeen": 1788682962464,
+      "online": false,
+      "receivedAt": "5:22:42 PM",
+      "message": "Stall detected (count=1)",
+      "lastFreezeTimestamp": 1788682928233,
+      "recentFreezeLog": "1788680817413 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788680837423 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788680897445 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788680967474 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788681247579 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788681287595 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788681357621 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788681517682 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788681717755 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788681757771 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788682127904 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788682177925 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected\n1788682522856 | state=STANDBY | stalls=0 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | STANDBY keepalive restart\n1788682528100 | state=STANDBY | stalls=0 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Soft recovery succeeded (time advancing)\n1788682928231 | state=STANDBY | stalls=1 | errors=0 | time=-1 | url=https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8 | Stall detected",
+      "deviceLocale": "ja-JP"
+    }
+  ]
+}
