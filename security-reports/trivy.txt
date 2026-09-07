@@ -1,0 +1,32 @@
+
+Report Summary
+
+┌─────────────────────────────┬──────┬─────────────────┬─────────┬───────────────────┐
+│           Target            │ Type │ Vulnerabilities │ Secrets │ Misconfigurations │
+├─────────────────────────────┼──────┼─────────────────┼─────────┼───────────────────┤
+│ dashboard/package-lock.json │ npm  │        3        │    -    │         -         │
+└─────────────────────────────┴──────┴─────────────────┴─────────┴───────────────────┘
+Legend:
+- '-': Not scanned
+- '0': Clean (no security findings detected)
+
+
+dashboard/package-lock.json (npm)
+=================================
+Total: 3 (UNKNOWN: 0, LOW: 0, MEDIUM: 2, HIGH: 1, CRITICAL: 0)
+
+┌─────────┬────────────────┬──────────┬────────┬───────────────────┬───────────────┬───────────────────────────────────────────────────────────┐
+│ Library │ Vulnerability  │ Severity │ Status │ Installed Version │ Fixed Version │                           Title                           │
+├─────────┼────────────────┼──────────┼────────┼───────────────────┼───────────────┼───────────────────────────────────────────────────────────┤
+│ nanoid  │ CVE-2026-67213 │ HIGH     │ fixed  │ 3.3.16            │ 3.3.18, 5.1.6 │ nanoid: nanoid: Denial of Service via infinite loop in    │
+│         │                │          │        │                   │               │ random ID generation...                                   │
+│         │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-67213                │
+├─────────┼────────────────┼──────────┤        ├───────────────────┼───────────────┼───────────────────────────────────────────────────────────┤
+│ qs      │ CVE-2026-82417 │ MEDIUM   │        │ 6.15.3            │ 6.16.0        │ qs: qs: Denial of Service via improper validation in      │
+│         │                │          │        │                   │               │ stringify function                                        │
+│         │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-82417                │
+│         ├────────────────┤          │        │                   │               ├───────────────────────────────────────────────────────────┤
+│         │ CVE-2026-82562 │          │        │                   │               │ qs: qs: Denial of Service via array limit bypass in query │
+│         │                │          │        │                   │               │ string...                                                 │
+│         │                │          │        │                   │               │ https://avd.aquasec.com/nvd/cve-2026-82562                │
+└─────────┴────────────────┴──────────┴────────┴───────────────────┴───────────────┴───────────────────────────────────────────────────────────┘

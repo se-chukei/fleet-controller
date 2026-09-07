@@ -14,23 +14,23 @@ export default defineConfig(() => {
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
             if (req.url?.startsWith('/api/state')) {
-              const statusFilePath = path.resolve(__dirname, 'fleetstatus.json');
+              const statusFilePath = path.resolve(__dirname, 'fleet_state.json');
 
               try {
                 if (fs.existsSync(statusFilePath)) {
                   const fileContent = fs.readFileSync(statusFilePath, 'utf-8');
                   JSON.parse(fileContent); // Validate JSON
 
-                  console.log(`[DataBridge] Serving fleetstatus.json to TV app at ${new Date().toLocaleTimeString()}`);
+                  console.log(`[DataBridge] Serving fleet_state.json to TV app at ${new Date().toLocaleTimeString()}`);
                   res.setHeader('Content-Type', 'application/json');
                   res.statusCode = 200;
                   res.end(fileContent);
                   return;
                 } else {
-                  console.warn('[DataBridge] fleetstatus.json not found in project root!');
+                  console.warn('[DataBridge] fleet_state.json not found in project root!');
                 }
               } catch (e: any) {
-                console.error(`[DataBridge] Error reading/parsing fleetstatus.json: ${e.message}`);
+                console.error(`[DataBridge] Error reading/parsing fleet_state.json: ${e.message}`);
               }
 
               // Fallback response if file is missing or malformed

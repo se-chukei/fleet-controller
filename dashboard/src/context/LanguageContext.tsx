@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-type Locale = 'en' | 'ja';
+export type Locale = 'en' | 'ja';
 
 type Translations = typeof translationsEN;
 
@@ -237,24 +237,66 @@ const translationsJA: Translations = {
   redundancyRatio: '冗長性比率: 100% | 放送解像度: 1080P準拠',
 };
 
+type TranslationOverrides = Record<string, Partial<Record<Locale, string>>>;
+
 interface LanguageContextProps {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: keyof Translations) => string;
+  t: (key: string) => string;
+  catalog: TranslationOverrides;
+  saveTranslation: (key: string, locale: Locale, value: string) => Promise<void>;
+  importTranslations: (csv: string) => Promise<void>;
 }
 
 const LanguageContext = createContext<LanguageContextProps | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>('en');
+  const [overrides, setOverrides] = useState<TranslationOverrides>({});
 
-  const t = (key: keyof Translations): string => {
+  React.useEffect(() => {
+    fetch('/api/localization')
+      .then(response => response.ok ? response.json() : null)
+      .then(data => {
+        if (data?.translations) setOverrides(data.translations);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const t = (key: string): string => {
     const dict = locale === 'ja' ? translationsJA : translationsEN;
-    return dict[key] || translationsEN[key] || String(key);
+    return overrides[key]?.[locale] || dict[key as keyof Translations] || translationsEN[key as keyof Translations] || String(key);
   };
 
+  const saveTranslation = async (key: string, targetLocale: Locale, value: string) => {
+    const response = await fetch('/api/localization', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, locale: targetLocale, value })
+    });
+    if (!response.ok) throw new Error('Failed to save translation');
+    const data = await response.json();
+    setOverrides(data.translations || {});
+  };
+
+  const importTranslations = async (csv: string) => {
+    const response = await fetch('/api/localization/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csv })
+    });
+    if (!response.ok) throw new Error('Failed to import translations');
+    const data = await response.json();
+    setOverrides(data.translations || {});
+  };
+
+  const builtInCatalog = Object.fromEntries(
+    Object.keys(translationsEN).map(key => [key, { en: translationsEN[key as keyof Translations], ja: translationsJA[key as keyof Translations] }])
+  );
+  const catalog = { ...builtInCatalog, ...overrides };
+
   return (
-    <LanguageContext.Provider value={{ locale, setLocale, t }}>
+    <LanguageContext.Provider value={{ locale, setLocale, t, catalog, saveTranslation, importTranslations }}>
       {children}
     </LanguageContext.Provider>
   );

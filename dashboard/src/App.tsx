@@ -12,6 +12,7 @@ import TroubleshootPanel from './components/TroubleshootPanel';
 import OTAManager from './components/OTAManager';
 import ProvisioningLab from './components/ProvisioningLab';
 import TVUWebhookSimulator from './components/TVUWebhookSimulator';
+import LocalizationPanel from './components/LocalizationPanel';
 import { useTranslation } from './context/LanguageContext';
 import { Network, Server, Menu, ArrowDownCircle, AlertCircle, Sparkles, Flame, Check, Shield, Globe, RotateCcw, ExternalLink, Settings2, Database } from 'lucide-react';
 import { sourceBase64 } from './source-b64';
@@ -20,6 +21,7 @@ export default function App() {
   const { locale, setLocale, t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'ota' | 'provisioning'>('dashboard');
   const [showLogoMenu, setShowLogoMenu] = useState(false);
+  const [showLocalizationPanel, setShowLocalizationPanel] = useState(false);
 
   const urlParams = new URLSearchParams(window.location.search);
   const [isAdmin, setIsAdmin] = useState(urlParams.get('admin') !== 'false');
@@ -100,6 +102,27 @@ export default function App() {
     });
     channel.close();
   }, [globalFleetState, primaryFeedOnline, endpoints, isConsoleView]);
+
+  // Fetch actual endpoint state from /api/state on startup and poll periodically
+  useEffect(() => {
+    const fetchFleetState = async () => {
+      try {
+        const response = await fetch('/api/state');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.appState) {
+            setGlobalFleetState(data.appState);
+          }
+        }
+      } catch (err) {
+        console.error('[Dashboard] Failed to fetch /api/state:', err);
+      }
+    };
+
+    fetchFleetState();
+    const interval = setInterval(fetchFleetState, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Server metrics tracking (Section 3 & 4)
   const [metrics, setMetrics] = useState<ServerMetrics>({
@@ -314,13 +337,10 @@ export default function App() {
 
       // 3. Dynamic Telebeat Ingest RPS history calculation
       setMetrics((prev) => {
-        // Base rate around 33.3 RPS for 100 devices polling average 3s
-        // We add some natural uniform noise oscillations (29 to 37)
         const currentRps = 29 + Math.random() * 8;
         const newHistory = [...prev.telebeatRpsHistory.slice(1), parseFloat(currentRps.toFixed(1))];
         const averageRps = parseFloat((newHistory.reduce((a, b) => a + b, 0) / newHistory.length).toFixed(1));
         
-        // Count statuses
         let online = 0;
         let warning = 0;
         let offline = 0;
@@ -331,7 +351,7 @@ export default function App() {
         endpoints.forEach((n) => {
           if (n.status === 'ONLINE') online++;
           else if (n.status === 'WARNING') {
-            online++; // Warnings are technically alive
+            online++;
             warning++;
           } else offline++;
 
@@ -339,13 +359,11 @@ export default function App() {
             rtmpCount++;
             totalBandwidth += n.vlcBitrateMbps;
           } else {
-            usbCount++; // USB storage doesn't consume network bandwidth
+            usbCount++;
           }
         });
 
-        // Convert total megabits to gigabits
         const bandwidthGbps = parseFloat((totalBandwidth / 1000).toFixed(2));
-        // Volatile disk consumption shifts slightly
         const diskConsumption = Math.min(500, Math.max(64, prev.ramDiskUsageMb + (Math.random() > 0.5 ? 1 : -1)));
 
         return {
@@ -484,7 +502,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [activeActions, globalFleetState]);
 
-  // Update details of a single node in fleet
   const handleUpdateNode = (nodeId: string, updates: Partial<FleetEndpoint>) => {
     setEndpoints((prev) =>
       prev.map((n) => (n.id === nodeId ? { ...n, ...updates } : n))
@@ -499,7 +516,6 @@ export default function App() {
     }
   };
 
-  // Swap / replace retired hardware with an unassigned dormant device
   const handleSwapDevice = (oldNodeId: string, newNodeId: string) => {
     const oldNode = endpoints.find(e => e.id === oldNodeId);
     const newNode = endpoints.find(e => e.id === newNodeId);
@@ -515,7 +531,6 @@ export default function App() {
     setEndpoints((prev) =>
       prev.map((node) => {
         if (node.id === oldNodeId) {
-          // Decommission/retire the old hardware node and rename its ID/name
           return {
             ...node,
             id: decomId,
@@ -536,7 +551,6 @@ export default function App() {
           };
         }
         if (node.id === newNodeId) {
-          // Provision the new hardware node with the old location profile
           return {
             ...node,
             name: oldNode.name,
@@ -558,11 +572,9 @@ export default function App() {
       })
     );
 
-    // Stay on the details pane, but focus on the newly swapped device ID
     setSelectedNodeId(newNodeId);
   };
 
-  // Push an OTA update to a single node (Section 6.1 specs)
   const handleTriggerNodeOta = (nodeId: string) => {
     setEndpoints((prev) =>
       prev.map((node) => {
@@ -576,7 +588,7 @@ export default function App() {
           ];
           return {
             ...node,
-            versionCode: 104, // upgraded to newest
+            versionCode: 104,
             logs: [...node.logs, ...otaLogs]
           };
         }
@@ -585,7 +597,6 @@ export default function App() {
     );
   };
 
-  // Simulate a node decoder crash (Section 6.2 watchdog)
   const triggerRandomDecoderCrash = () => {
     let targetNode = endpoints.find((n) => n.id === selectedNodeId && n.status === 'ONLINE');
     
@@ -601,7 +612,7 @@ export default function App() {
           return {
             ...node,
             status: 'WARNING',
-            watchdogStep: 1, // initialize watchdog auto-healing sequence
+            watchdogStep: 1,
             cpuUsagePercent: 98,
             deviceTempC: 72,
             logs: [
@@ -616,10 +627,35 @@ export default function App() {
     );
   };
 
-  // Simulate global RTMP network signal drop (Section 6.4 Local Priority)
+  // Function to send state updates back to the backend/endpoint to persist fleet_state.json
+  const updateBackendState = async (newState: OperationalState, feedOnline?: boolean) => {
+    try {
+      const response = await fetch('/api/state', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appState: newState,
+          primaryFeedOnline: feedOnline ?? primaryFeedOnline,
+          timestamp: new Date().toISOString()
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('[Dashboard] Failed to persist state to /api/state, status:', response.status);
+      }
+    } catch (err) {
+      console.error('[Dashboard] Network error while updating /api/state:', err);
+    }
+  };
+
   const togglePrimaryFeedSignal = () => {
     const nextState = !primaryFeedOnline;
     setPrimaryFeedOnline(nextState);
+
+    // Write back the state change to fleet_state.json via the endpoint
+    updateBackendState(globalFleetState, nextState);
 
     setEndpoints((prev) => {
       const next = prev.map((node) => {
@@ -629,28 +665,23 @@ export default function App() {
         let uri = node.streamUri;
 
         if (!nextState) {
-          // RTMP Signal Loss!
           newLogs.push(`[${new Date().toLocaleTimeString()}] ALERT: RTMP socket socket_reset_by_peer on primary venue feed!`);
           
           if (node.usbAttached && node.usbDebounceCountdown === null) {
-            // Local USB priorities trigger over server backup! (Section 6.4)
             appState = 'PLAYBACK';
             bitrate = 12.8;
             uri = 'file:///mnt/media_rw/usb_drive/loop.mp4';
             newLogs.push(`[${new Date().toLocaleTimeString()}] FAILOVER: Signal loss detected. Local priority USB attached. Overriding to local loop playback.`);
           } else {
-            // No USB, fallback to ambient backup feed (STANDBY)
             appState = 'STANDBY';
             bitrate = 2.8;
             uri = 'rtmp://10.200.4.1/live/ambient_multicam';
             newLogs.push(`[${new Date().toLocaleTimeString()}] FAILOVER: Signal loss detected. No local USB. Swapping VLC rendering to ambient backup feed.`);
           }
         } else {
-          // RTMP Signal Restored!
           newLogs.push(`[${new Date().toLocaleTimeString()}] SUCCESS: Primary venue broadcast signal recovered. Synchronizing decoders.`);
           
           if (node.usbAttached && node.usbDebounceCountdown === null) {
-            // USB maintains priority override (Section 6.4)
             appState = 'PLAYBACK';
             bitrate = 12.8;
             uri = 'file:///mnt/media_rw/usb_drive/loop.mp4';
@@ -681,6 +712,9 @@ export default function App() {
     const nextState = event === 'stream_start' ? 'STREAM' : 'STANDBY';
     setGlobalFleetState(nextState);
 
+    // Write back the state change to fleet_state.json via the endpoint
+    updateBackendState(nextState, primaryFeedOnline);
+
     setEndpoints((prev) => {
       const next = prev.map((node) => {
         if (node.isDormant || node.isDecommissioned) return node;
@@ -691,7 +725,6 @@ export default function App() {
         let uri = node.streamUri;
 
         if (event === 'stream_start') {
-          // Stream Start Webhook
           newLogs.push(`[${new Date().toLocaleTimeString()}] [TVU Webhook] RECEIVED event "stream_start" on data bridge.`);
           
           if (node.usbAttached && node.usbDebounceCountdown === null) {
@@ -706,7 +739,6 @@ export default function App() {
             newLogs.push(`[${new Date().toLocaleTimeString()}] [TVU Webhook] Syncing player decoder to broadcast stream: "${node.targetStreamUri}"`);
           }
         } else {
-          // Stream Stop Webhook
           newLogs.push(`[${new Date().toLocaleTimeString()}] [TVU Webhook] RECEIVED event "stream_stop" on data bridge.`);
           
           if (node.usbAttached && node.usbDebounceCountdown === null) {
@@ -777,7 +809,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
       
-      {/* Header Banner */}
       <header className="bg-slate-900/60 border-b border-slate-800/80 px-6 py-4 backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 z-40">
         <div className="flex items-center gap-3 relative">
           <div className="relative">
@@ -805,7 +836,6 @@ export default function App() {
                   </div>
 
                   <div className="space-y-1">
-                    {/* Language Toggler */}
                     <div className="px-3 py-1.5 flex items-center justify-between text-xs font-sans text-slate-300 hover:bg-slate-900/50 rounded-lg">
                       <span className="flex items-center gap-2">
                         <Globe className="w-4 h-4 text-indigo-400" />
@@ -831,7 +861,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Toggle Admin Mode */}
                     <button
                       onClick={() => {
                         setIsAdmin(!isAdmin);
@@ -849,7 +878,6 @@ export default function App() {
                       </span>
                     </button>
 
-                    {/* Toggle Debug Mode */}
                     <button
                       onClick={() => {
                         setDebugMode(!debugMode);
@@ -867,7 +895,21 @@ export default function App() {
                       </span>
                     </button>
 
-                    {/* Launch Data Bridge Debug Console */}
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setShowLogoMenu(false);
+                          setShowLocalizationPanel(true);
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-sans text-slate-300 hover:bg-slate-900/50 rounded-lg transition-colors flex items-center justify-between group cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-indigo-400" />
+                          {locale === 'ja' ? 'ローカライズ設定' : 'Localization Config'}
+                        </span>
+                      </button>
+                    )}
+
                     {isAdmin && (
                       <button
                         onClick={() => {
@@ -902,7 +944,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Global failure/failover injection simulators */}
         <div className="flex flex-wrap items-center gap-2" id="global-simulators">
           {debugMode && (
             <>
@@ -949,10 +990,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container / Workspace */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6">
         
-        {/* Navigation Tabs bar */}
         <div className="flex border-b border-slate-800/60 pb-px" id="navigation-tabs">
           <button
             onClick={() => setActiveTab('dashboard')}
@@ -995,7 +1034,6 @@ export default function App() {
           )}
         </div>
 
-        {/* High Priority Alerts (VLC Crashed / Inactive Standby) */}
         {(() => {
           const crashedNodes = endpoints.filter(
             (node) => node.status === 'WARNING' || node.accessKeyRevoked || (node.appState === 'STANDBY' && globalFleetState === 'STREAM')
@@ -1009,7 +1047,6 @@ export default function App() {
                   <span>{locale === 'ja' ? '要確認' : 'ALERTS'}</span>
                 </div>
                 
-                {/* Prioritized Affected Endpoints */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   {crashedNodes.map(node => {
                     const cleanName = (node.name || `HW-${node.id.slice(-4)}`).replace('GTV Streamer - ', '');
@@ -1033,13 +1070,11 @@ export default function App() {
           );
         })()}
 
-        {/* Tab Contents Layout */}
         <div className="flex-1 flex flex-col min-h-0">
           {activeTab === 'dashboard' && (
             <div className="flex-1 flex flex-col gap-6 min-h-0" id="tab-dashboard">
               
               <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
-                {/* Left Column: Metrics & Visual Node Grid */}
                 <div className="flex-1 flex flex-col gap-6 min-h-0">
                   <DeviceGrid
                     endpoints={endpoints}
@@ -1056,7 +1091,6 @@ export default function App() {
                   />
                 </div>
 
-                {/* Right Column: Selected Node Vitals & Terminal Sandbox */}
                 {selectedNode ? (
                   <div className="w-full lg:w-[420px] flex-shrink-0">
                     <DeviceDetail
@@ -1100,7 +1134,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Persistent Diagnostics Overlay Portal (TroubleshootPanel - Section 5) */}
       {troubleshootNode && (
         <TroubleshootPanel
           node={troubleshootNode}
@@ -1109,7 +1142,6 @@ export default function App() {
         />
       )}
 
-      {/* Outer master control status bar (SteamOS style Performance Overlay) */}
       <footer className="bg-slate-950 border-t border-slate-900 py-1.5 px-4 flex items-center justify-center gap-6 text-[10px] font-mono text-slate-400">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -1161,6 +1193,10 @@ export default function App() {
           onUpdateNode={handleUpdateNode}
           onClose={() => setShowDebugConsole(false)}
         />
+      )}
+
+      {showLocalizationPanel && (
+        <LocalizationPanel onClose={() => setShowLocalizationPanel(false)} />
       )}
 
     </div>

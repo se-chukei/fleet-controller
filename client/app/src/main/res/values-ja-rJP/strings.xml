@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">fleet-controllerクライアント</string>
+    <string name="live_event_title">ライブイベント</string>
+    <string name="stream_is_live">ライブ配信中: %1$s</string>
+</resources>

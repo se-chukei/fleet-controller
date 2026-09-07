@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">fleet-controller-client</string>
+    <string name="live_event_title">Live Event</string>
+    <string name="stream_is_live">Stream is Live: %1$s</string>
 </resources>

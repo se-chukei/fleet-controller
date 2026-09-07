@@ -296,21 +296,13 @@ Allow user choice
 
 # 12. Hardware Platform Rules
 
-The initial deployment platform is:
+The primary deployment platform is:
 
-```
 Google TV Streamer
-```
 
-However:
+Built-in Android TV (television sets) support is Later / Exploratory.
 
-The architecture must support:
-
-- Android TV televisions.
-- Google TV devices.
-- Compatible managed Android TV hardware.
-
-Do not hard-code assumptions that only apply to one device model.
+Do not hard-code assumptions that only apply to one device model, but prioritise Streamer behaviour for the October gate.
 
 ---
 
@@ -438,3 +430,26 @@ The purpose of AI assistance is to accelerate development while preserving:
 - Architectural integrity.
 
 AI should act as a senior engineering assistant, not an uncontrolled code generator.
+
+## Current Development Gate (October)
+
+The immediate goal is reliable operation on 5–10 Google TV Streamer devices.
+
+Authoritative behaviour for the current phase is defined in:
+CURRENT_TARGET_BEHAVIOR.md
+
+When this document conflicts with broader design docs, `CURRENT_TARGET_BEHAVIOR.md` wins for the current prototype phase.
+
+## Hardware Target
+
+Primary: Google TV Streamer.  
+Built-in Android TV support is Later / Exploratory.
+
+## Key Recent Decisions (see DECISIONS.md)
+
+- ADR-011 Device Naming Model
+- ADR-012 Offline Telemetry Display Rules
+- ADR-013 OTA Update Safety (rollback required)
+- ADR-014 Client Modularity Approach (single APK for October)
+- ADR-015 Thermal Protection (on-screen warning required)
+- ADR-016 Primary Hardware Target

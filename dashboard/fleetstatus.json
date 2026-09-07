@@ -1,5 +1,8 @@
 {
-  "appState": "STREAM",
-  "streamUrl": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-  "accessKeyRevoked": false
+  "appState": "STANDBY",
+  "streamUrl": "https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8",
+  "accessKeyRevoked": false,
+  "timestamp": 1787479052,
+  "activeStreamUrl": "https://d2ibp6n2lenjxm.cloudfront.net/hls/dvr/ipblite06/5188404197617_livestream02_2000/chunklist_DVR.m3u8",
+  "standbyStreamUrl": "https://d37piaqbgb9rwg.cloudfront.net/hls/video/ipblite/5339276459485_livestream01_1500/chunklist.m3u8"
 }

@@ -1,0 +1,9 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "client/gradlew": true,
+        "/^node --check dashboard/tempserver\\.cjs$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
