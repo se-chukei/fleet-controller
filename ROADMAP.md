@@ -262,6 +262,61 @@ Bricking a device is **not** an acceptable failure mode.
 - 5–10 device soak test (October gate).
 - Later: 30 → 100+ device validation.
 
+# Exploratory Track — Per-Device Control & Capability Hooks
+
+This track is intentionally outside the October gate. It defines the extension
+points needed for a desktop/mobile operator interface without weakening the
+outbound-only endpoint model.
+
+## Operator control surface
+
+The dashboard and a future mobile client should use the same Data Bridge API
+and authorization model. They must not connect directly to Android devices.
+
+Initial per-device controls to explore:
+
+- Temporary or persistent operational-state override (`STANDBY`, `STREAM`, or
+  `PLAYBACK`) with explicit expiry and a clear return-to-fleet-state action.
+- Stream URL injection with URL scheme, destination, and length validation.
+- Local playback controls exposed as intent-level commands such as play,
+  pause, stop, seek, select media, and return to fleet control where supported.
+- Resync, watchdog check, log collection, and reboot as separately authorized
+  administrative actions.
+- A device detail view that shows command status, acknowledgement, rejection
+  reason, expiry, and the last observed device state.
+
+## Contract and modularity requirements
+
+- Represent commands as versioned, auditable records with `commandId`, issuer,
+  creation time, expiry, target device, requested capability, arguments, and
+  status. Delivery must be idempotent.
+- Keep durable desired configuration separate from one-shot commands. The
+  device should reconcile both through the existing `/api/sync` polling path.
+- Define precedence explicitly: local safety and playback policy, temporary
+  device override, device configuration, fleet desired state, then fallback.
+- Add capability discovery and a feature-module registry so unsupported controls
+  are hidden or rejected rather than silently accepted.
+- Require every feature module to expose lifecycle hooks for configuration
+  updates, commands, telemetry contribution, health checks, and shutdown.
+- Return structured acknowledgement and error data so other modules and
+  external controllers can observe the same result as the web UI.
+- Enforce role-based authorization, per-device scope, audit logging, replay
+  protection, and rate limits before exposing control to mobile clients.
+
+## Suggested delivery order
+
+1. Freeze the Data Bridge command and desired-configuration schema.
+2. Implement Android capability discovery, command acknowledgement, and local
+   precedence without adding new UI.
+3. Replace simulated dashboard mutations with Data Bridge-backed commands.
+4. Add a responsive device detail workflow for desktop and mobile browsers.
+5. Add a native mobile client only if browser delivery cannot meet the operator
+	 workflow or offline requirements.
+
+Success criteria for this track include safe expiry of overrides, deterministic
+reconciliation after reconnect, visible command outcomes, and no direct
+dashboard-to-device or mobile-to-device connections.
+
 ---
 
 # Feature Priority Summary (October Gate)
@@ -284,6 +339,9 @@ Bricking a device is **not** an acceptable failure mode.
 | Tailscale name sync               | Later                 |
 | Multi-stream routing              | Later                 |
 | Mobile operator app               | Later                 |
+| Per-device web control            | Later / Exploratory    |
+| Native mobile operator app        | Later / Exploratory    |
+| Capability discovery + command hooks | Later / Exploratory |
 
 ---
 
@@ -298,6 +356,11 @@ Bricking a device is **not** an acceptable failure mode.
 - External sounder / GPIO alerts.
 - Tailscale machine-name sync.
 - Build-time or runtime module suites for different use cases.
+- Per-device web controls for state overrides, stream injection, and supported
+  local playback intents.
+- Shared command API for desktop web, mobile web, and future native clients.
+- Capability discovery and lifecycle hooks for externally controlled feature
+  modules.
 
 ---
 

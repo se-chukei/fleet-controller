@@ -267,6 +267,64 @@ Rejected because:
 - Codec support is more limited.
 - Less suitable for broadcast-style deployment.
 
+# ADR-020: External Control Uses the Data Bridge and Capability Contracts
+
+Date:
+2026-09-09
+
+Status:
+Proposed for exploratory track
+
+## Decision
+
+Future desktop and mobile operator interfaces will control individual devices
+through the Data Bridge. They will not connect directly to Android endpoints or
+to VLC. The Android client remains the final authority for applying commands.
+
+The control contract will distinguish:
+
+- Durable desired configuration, such as an endpoint's standby URL or policy.
+- Expiring per-device overrides, such as forcing `STREAM` for a defined period.
+- One-shot commands, such as resync, log collection, or a supported local
+    playback intent.
+
+Commands will be versioned, scoped to a device, idempotent, auditable, and
+acknowledged by the endpoint through the existing outbound `/api/sync` loop.
+The endpoint will advertise supported capabilities and feature modules will
+provide lifecycle, command, configuration, telemetry, and health hooks.
+
+## Reason
+
+This supports desktop and mobile control without creating a second networking
+model or bypassing local safety, offline behavior, and playback policy. It also
+lets unsupported device capabilities fail explicitly and gives future modules
+the same externally observable contract as the web interface.
+
+## Precedence
+
+The client applies requests in this order:
+
+1. Local safety and playback policy.
+2. Active temporary device override.
+3. Device configuration.
+4. Fleet desired state.
+5. Safe fallback.
+
+An override must have an explicit expiry or be explicitly cleared. A command
+must report `accepted`, `running`, `succeeded`, `rejected`, `expired`, or
+`failed`, with a machine-readable reason where it does not succeed.
+
+## Consequences
+
+- The Data Bridge needs a durable command store, authorization checks, audit
+    records, and reconciliation logic.
+- The Android client needs capability discovery, command deduplication, result
+    acknowledgement, and a registry-backed dispatch boundary.
+- The dashboard's current simulated per-device mutations cannot be treated as
+    production control until they use this contract.
+- A native mobile application is optional; responsive web control can reuse the
+    same API and is the first client to evaluate.
+
 ---
 
 # ADR-006: Data Bridge Runs On-Premise
