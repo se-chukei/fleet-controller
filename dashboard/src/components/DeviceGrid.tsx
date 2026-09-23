@@ -895,44 +895,56 @@ export default function DeviceGrid({
                     </div>
                   </div>
                   <div className="flex items-center gap-4 text-xs font-mono shrink-0 ml-4">
-                    <div className="hidden md:block text-right w-36 sm:w-40">
-                      <span className="text-[10px] text-slate-500 block uppercase">{locale === 'ja' ? 'ステータス' : 'Status'}</span>
-                      {isResyncing ? (
-                        <span className="font-mono font-black text-cyan-400 animate-pulse flex items-center gap-1 justify-end whitespace-nowrap">
-                          <RefreshCw className="w-2.5 h-2.5 animate-spin shrink-0 text-cyan-400" />
-                          <span className="text-xs font-semibold whitespace-nowrap">
-                            {activeActions[node.id].type === 'REBOOT' ? (
-                              <>
-                                {activeActions[node.id].phase === 'PENDING' && (locale === 'ja' ? '待機中' : 'WAITING')}
-                                {activeActions[node.id].phase === 'PHASE_1' && (locale === 'ja' ? '1/3 終了中' : '1/3 SHUTDOWN')}
-                                {activeActions[node.id].phase === 'PHASE_2' && (locale === 'ja' ? '2/3 再起動中' : '2/3 REBOOTING')}
-                                {activeActions[node.id].phase === 'PHASE_3' && (locale === 'ja' ? '3/3 起動中' : '3/3 STARTING')}
-                                {activeActions[node.id].phase === 'NOMINAL' && (locale === 'ja' ? '完了' : 'NOMINAL')}
-                              </>
-                            ) : activeActions[node.id].type === 'RESYNC' ? (
-                              <>
-                                {activeActions[node.id].phase === 'PENDING' && (locale === 'ja' ? '待機中' : 'WAITING')}
-                                {activeActions[node.id].phase === 'PHASE_1' && (locale === 'ja' ? '1/3 切断中' : '1/3 DISCONNECTING')}
-                                {activeActions[node.id].phase === 'PHASE_2' && (locale === 'ja' ? '2/3 再同期中' : '2/3 RESYNCING')}
-                                {activeActions[node.id].phase === 'PHASE_3' && (locale === 'ja' ? '3/3 同期中' : '3/3 SYNCING')}
-                                {activeActions[node.id].phase === 'NOMINAL' && (locale === 'ja' ? '完了' : 'NOMINAL')}
-                              </>
-                            ) : (
-                              <>
-                                {activeActions[node.id].phase === 'PENDING' && (locale === 'ja' ? '待機中' : 'WAITING')}
-                                {activeActions[node.id].phase === 'PHASE_1' && (locale === 'ja' ? '1/3 実行中' : '1/3 EXECUTING')}
-                                {activeActions[node.id].phase === 'PHASE_2' && (locale === 'ja' ? '2/3 処理中' : '2/3 PROCESSING')}
-                                {activeActions[node.id].phase === 'PHASE_3' && (locale === 'ja' ? '3/3 同期中' : '3/3 SYNCING')}
-                                {activeActions[node.id].phase === 'NOMINAL' && (locale === 'ja' ? '完了' : 'NOMINAL')}
-                              </>
-                            )}
+                    <div className="hidden md:flex items-center gap-2 justify-end">
+                      <div className="text-right w-28 sm:w-32">
+                        <span className="text-[10px] text-slate-500 block uppercase">{locale === 'ja' ? 'ステータス' : 'Status'}</span>
+                        {isResyncing ? (
+                          <span className="font-mono font-black text-cyan-400 animate-pulse flex items-center gap-1 justify-end whitespace-nowrap">
+                            <RefreshCw className="w-2.5 h-2.5 animate-spin shrink-0 text-cyan-400" />
+                            <span className="text-xs font-semibold whitespace-nowrap">
+                              {activeActions[node.id].type === 'REBOOT' ? (
+                                <>
+                                  {activeActions[node.id].phase === 'PENDING' && (locale === 'ja' ? '待機中' : 'WAITING')}
+                                  {activeActions[node.id].phase === 'PHASE_1' && (locale === 'ja' ? '1/3 終了中' : '1/3 SHUTDOWN')}
+                                  {activeActions[node.id].phase === 'PHASE_2' && (locale === 'ja' ? '2/3 再起動中' : '2/3 REBOOTING')}
+                                  {activeActions[node.id].phase === 'PHASE_3' && (locale === 'ja' ? '3/3 起動中' : '3/3 STARTING')}
+                                  {activeActions[node.id].phase === 'NOMINAL' && (locale === 'ja' ? '完了' : 'NOMINAL')}
+                                </>
+                              ) : activeActions[node.id].type === 'RESYNC' ? (
+                                <>
+                                  {activeActions[node.id].phase === 'PENDING' && (locale === 'ja' ? '待機中' : 'WAITING')}
+                                  {activeActions[node.id].phase === 'PHASE_1' && (locale === 'ja' ? '1/3 切断中' : '1/3 DISCONNECTING')}
+                                  {activeActions[node.id].phase === 'PHASE_2' && (locale === 'ja' ? '2/3 再同期中' : '2/3 RESYNCING')}
+                                  {activeActions[node.id].phase === 'PHASE_3' && (locale === 'ja' ? '3/3 同期中' : '3/3 SYNCING')}
+                                  {activeActions[node.id].phase === 'NOMINAL' && (locale === 'ja' ? '完了' : 'NOMINAL')}
+                                </>
+                              ) : (
+                                <>
+                                  {activeActions[node.id].phase === 'PENDING' && (locale === 'ja' ? '待機中' : 'WAITING')}
+                                  {activeActions[node.id].phase === 'PHASE_1' && (locale === 'ja' ? '1/3 実行中' : '1/3 EXECUTING')}
+                                  {activeActions[node.id].phase === 'PHASE_2' && (locale === 'ja' ? '2/3 処理中' : '2/3 PROCESSING')}
+                                  {activeActions[node.id].phase === 'PHASE_3' && (locale === 'ja' ? '3/3 同期中' : '3/3 SYNCING')}
+                                  {activeActions[node.id].phase === 'NOMINAL' && (locale === 'ja' ? '完了' : 'NOMINAL')}
+                                </>
+                              )}
+                            </span>
                           </span>
-                        </span>
-                      ) : (
-                        <span className={`font-semibold whitespace-nowrap ${node.accessKeyRevoked ? 'text-rose-500 animate-pulse' : node.appState === 'PLAYBACK' ? 'text-pink-400' : node.appState === 'STREAM' ? 'text-emerald-400' : 'text-yellow-400'}`}>
-                          {node.accessKeyRevoked ? (locale === 'ja' ? 'キー失効中' : 'KEY REVOKED') : node.appState}
-                        </span>
-                      )}
+                        ) : (
+                          <span className={`font-semibold whitespace-nowrap ${node.accessKeyRevoked ? 'text-rose-500 animate-pulse' : node.appState === 'PLAYBACK' ? 'text-pink-400' : node.appState === 'STREAM' ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                            {node.accessKeyRevoked ? (locale === 'ja' ? 'キー失効中' : 'KEY REVOKED') : node.appState}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectEndpoint(node);
+                        }}
+                        className="px-2 py-1 text-[10px] font-mono font-bold text-indigo-300 bg-indigo-950/60 border border-indigo-500/40 hover:bg-indigo-900/80 hover:text-white rounded transition-colors cursor-pointer shrink-0 ml-1"
+                        title={locale === 'ja' ? '詳細情報・個別設定を開く' : 'Open Device Details'}
+                      >
+                        {locale === 'ja' ? '詳細' : 'Detail'}
+                      </button>
                     </div>
                     <div className="text-right w-20">
                       <span className="text-[10px] text-slate-500 block uppercase">{locale === 'ja' ? 'ビットレート' : 'Bitrate'}</span>

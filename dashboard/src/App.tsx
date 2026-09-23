@@ -13,7 +13,7 @@ import OTAManager from './components/OTAManager';
 import ProvisioningLab from './components/ProvisioningLab';
 import TVUWebhookSimulator from './components/TVUWebhookSimulator';
 import { useTranslation } from './context/LanguageContext';
-import { Network, Server, Menu, ArrowDownCircle, AlertCircle, Sparkles, Flame, Check, Shield, Globe, RotateCcw, ExternalLink, Settings2, Database } from 'lucide-react';
+import { Network, Server, Menu, ArrowDownCircle, AlertCircle, Sparkles, Flame, Check, Shield, Globe, RotateCcw, ExternalLink, Settings2, Database, Zap } from 'lucide-react';
 import { sourceBase64 } from './source-b64';
 
 export default function App() {
@@ -953,6 +953,55 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6">
         
         {/* Navigation Tabs bar */}
+                {/* PROMINENT MANUAL FLEET COMMAND & STREAM OVERRIDE CONTROL BANNER */}
+        <div className="bg-slate-900/80 border border-slate-700/80 rounded-xl p-4 backdrop-blur-md flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-lg" id="manual-fleet-override-bar">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="p-2 bg-indigo-950/80 border border-indigo-500/40 rounded-lg text-indigo-400">
+              <Zap className="w-5 h-5 text-indigo-400" />
+            </div>
+            <div>
+              <h3 className="text-xs font-mono font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                {locale === 'ja' ? '手動フリート制御 & 配信アドレス設定' : 'MANUAL FLEET CONTROL & STREAM OVERRIDE'}
+                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 border border-indigo-800 text-indigo-300 font-normal">
+                  {locale === 'ja' ? '即時一括指示' : 'GLOBAL OVERRIDE'}
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-400 font-sans mt-0.5">
+                {locale === 'ja' ? '全アクティブ端末の動作状態 (STREAM / STANDBY) 切り替えおよび一括配信アドレスの指示' : 'Broadcast instant manual fleet status commands and destination stream URLs across active endpoints.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            {/* Global State Toggles */}
+            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-1 w-full sm:w-auto">
+              <button
+                onClick={() => triggerTvuWebhook('stream_start')}
+                className={`flex-1 sm:flex-initial px-3 py-1.5 text-xs font-mono font-bold rounded flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  globalFleetState === 'STREAM'
+                    ? 'bg-emerald-600 text-white shadow-[0_0_10px_rgba(16,185,129,0.4)]'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title={locale === 'ja' ? '全端末を本番ストリーム再生状態に切り替え' : 'Switch all endpoints to active STREAM state'}
+              >
+                <Check className="w-3.5 h-3.5" />
+                STREAM
+              </button>
+              <button
+                onClick={() => triggerTvuWebhook('stream_stop')}
+                className={`flex-1 sm:flex-initial px-3 py-1.5 text-xs font-mono font-bold rounded flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  globalFleetState === 'STANDBY'
+                    ? 'bg-yellow-500 text-slate-950 shadow-[0_0_10px_rgba(234,179,8,0.4)]'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title={locale === 'ja' ? '全端末を環境待機状態に切り替え' : 'Switch all endpoints to STANDBY state'}
+              >
+                STANDBY
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="flex border-b border-slate-800/60 pb-px" id="navigation-tabs">
           <button
             onClick={() => setActiveTab('dashboard')}
